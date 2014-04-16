@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2013 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package org.springframework.remoting.httpinvoker;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Locale;
 import java.util.zip.GZIPInputStream;
 
 import org.apache.http.Header;
@@ -27,15 +28,7 @@ import org.apache.http.NoHttpResponseException;
 import org.apache.http.StatusLine;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpPost;
-import org.apache.http.conn.scheme.PlainSocketFactory;
-import org.apache.http.conn.scheme.Scheme;
-import org.apache.http.conn.scheme.SchemeRegistry;
-import org.apache.http.conn.ssl.SSLSocketFactory;
 import org.apache.http.entity.ByteArrayEntity;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.impl.conn.PoolingClientConnectionManager;
-import org.apache.http.params.CoreConnectionPNames;
-
 import org.springframework.context.i18n.LocaleContext;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.remoting.support.RemoteInvocationResult;
@@ -57,6 +50,7 @@ import org.springframework.util.StringUtils;
  * @since 3.1
  * @see org.springframework.remoting.httpinvoker.SimpleHttpInvokerRequestExecutor
  */
+@SuppressWarnings("deprecation")
 public class HttpComponentsHttpInvokerRequestExecutor extends AbstractHttpInvokerRequestExecutor {
 
 	private static final int DEFAULT_MAX_TOTAL_CONNECTIONS = 100;
@@ -70,18 +64,19 @@ public class HttpComponentsHttpInvokerRequestExecutor extends AbstractHttpInvoke
 
 	/**
 	 * Create a new instance of the HttpComponentsHttpInvokerRequestExecutor with a default
-	 * {@link HttpClient} that uses a default {@link org.apache.http.impl.conn.PoolingClientConnectionManager}.
+	 * {@link HttpClient} that uses a default {@code org.apache.http.impl.conn.PoolingClientConnectionManager}.
 	 */
 	public HttpComponentsHttpInvokerRequestExecutor() {
-		SchemeRegistry schemeRegistry = new SchemeRegistry();
-		schemeRegistry.register(new Scheme("http", 80, PlainSocketFactory.getSocketFactory()));
-		schemeRegistry.register(new Scheme("https", 443, SSLSocketFactory.getSocketFactory()));
+		org.apache.http.conn.scheme.SchemeRegistry schemeRegistry = new org.apache.http.conn.scheme.SchemeRegistry();
+		schemeRegistry.register(new org.apache.http.conn.scheme.Scheme("http", 80, org.apache.http.conn.scheme.PlainSocketFactory.getSocketFactory()));
+		schemeRegistry.register(new org.apache.http.conn.scheme.Scheme("https", 443, org.apache.http.conn.ssl.SSLSocketFactory.getSocketFactory()));
 
-		PoolingClientConnectionManager connectionManager = new PoolingClientConnectionManager(schemeRegistry);
+		org.apache.http.impl.conn.PoolingClientConnectionManager connectionManager =
+				new org.apache.http.impl.conn.PoolingClientConnectionManager(schemeRegistry);
 		connectionManager.setMaxTotal(DEFAULT_MAX_TOTAL_CONNECTIONS);
 		connectionManager.setDefaultMaxPerRoute(DEFAULT_MAX_CONNECTIONS_PER_ROUTE);
 
-		this.httpClient = new DefaultHttpClient(connectionManager);
+		this.httpClient = new org.apache.http.impl.client.DefaultHttpClient(connectionManager);
 		setReadTimeout(DEFAULT_READ_TIMEOUT_MILLISECONDS);
 	}
 
@@ -116,7 +111,7 @@ public class HttpComponentsHttpInvokerRequestExecutor extends AbstractHttpInvoke
 	 */
 	public void setConnectTimeout(int timeout) {
 		Assert.isTrue(timeout >= 0, "Timeout must be a non-negative value");
-		getHttpClient().getParams().setIntParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, timeout);
+		getHttpClient().getParams().setIntParameter(org.apache.http.params.CoreConnectionPNames.CONNECTION_TIMEOUT, timeout);
 	}
 
 	/**
@@ -127,7 +122,7 @@ public class HttpComponentsHttpInvokerRequestExecutor extends AbstractHttpInvoke
 	 */
 	public void setReadTimeout(int timeout) {
 		Assert.isTrue(timeout >= 0, "Timeout must be a non-negative value");
-		getHttpClient().getParams().setIntParameter(CoreConnectionPNames.SO_TIMEOUT, timeout);
+		getHttpClient().getParams().setIntParameter(org.apache.http.params.CoreConnectionPNames.SO_TIMEOUT, timeout);
 	}
 
 
@@ -170,9 +165,12 @@ public class HttpComponentsHttpInvokerRequestExecutor extends AbstractHttpInvoke
 	 */
 	protected HttpPost createHttpPost(HttpInvokerClientConfiguration config) throws IOException {
 		HttpPost httpPost = new HttpPost(config.getServiceUrl());
-		LocaleContext locale = LocaleContextHolder.getLocaleContext();
-		if (locale != null) {
-			httpPost.addHeader(HTTP_HEADER_ACCEPT_LANGUAGE, StringUtils.toLanguageTag(locale.getLocale()));
+		LocaleContext localeContext = LocaleContextHolder.getLocaleContext();
+		if (localeContext != null) {
+			Locale locale = localeContext.getLocale();
+			if (locale != null) {
+				httpPost.addHeader(HTTP_HEADER_ACCEPT_LANGUAGE, StringUtils.toLanguageTag(locale));
+			}
 		}
 		if (isAcceptGzipEncoding()) {
 			httpPost.addHeader(HTTP_HEADER_ACCEPT_ENCODING, ENCODING_GZIP);

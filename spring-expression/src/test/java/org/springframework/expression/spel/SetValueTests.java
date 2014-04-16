@@ -32,14 +32,13 @@ import org.springframework.expression.ParseException;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
 import org.springframework.expression.spel.testresources.PlaceOfBirth;
 
-
 /**
  * Tests set value expressions.
  *
  * @author Keith Donald
  * @author Andy Clement
  */
-public class SetValueTests extends ExpressionTestCase {
+public class SetValueTests extends AbstractExpressionTests {
 
 	private final static boolean DEBUG = false;
 

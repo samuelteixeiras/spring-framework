@@ -20,11 +20,9 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 
-import org.springframework.util.ClassUtils;
-
 /**
- * {@link ParameterNameDiscoverer} implementation which uses JDK 8's
- * reflection facilities for introspecting parameter names.
+ * {@link ParameterNameDiscoverer} implementation which uses JDK 8's reflection facilities
+ * for introspecting parameter names (based on the "-parameters" compiler flag).
  *
  * @author Juergen Hoeller
  * @since 4.0

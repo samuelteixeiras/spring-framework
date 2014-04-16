@@ -325,6 +325,13 @@ public class BeanDefinitionParserDelegate {
 
 
 	/**
+	 * Initialize the default settings assuming a {@code null} parent delegate.
+	 */
+	public void initDefaults(Element root) {
+		initDefaults(root, null);
+	}
+
+	/**
 	 * Initialize the default lazy-init, autowire, dependency check settings,
 	 * init-method, destroy-method and merge settings. Support nested 'beans'
 	 * element use cases by falling back to the given parent in case the
@@ -335,16 +342,6 @@ public class BeanDefinitionParserDelegate {
 	public void initDefaults(Element root, BeanDefinitionParserDelegate parent) {
 		populateDefaults(this.defaults, (parent != null ? parent.defaults : null), root);
 		this.readerContext.fireDefaultsRegistered(this.defaults);
-	}
-
-	/**
-	 * Initialize the default settings assuming a {@code null} parent delegate.
-	 * @deprecated in Spring 3.1 in favor of
-	 * {@link #initDefaults(Element, BeanDefinitionParserDelegate)}
-	 */
-	@Deprecated
-	public void initDefaults(Element root) {
-		initDefaults(root, null);
 	}
 
 	/**
@@ -522,7 +519,7 @@ public class BeanDefinitionParserDelegate {
 			foundName = beanName;
 		}
 		if (foundName == null) {
-			foundName = (String) CollectionUtils.findFirstMatch(this.usedNames, aliases);
+			foundName = CollectionUtils.findFirstMatch(this.usedNames, aliases);
 		}
 		if (foundName != null) {
 			error("Bean name '" + foundName + "' is already used in this <beans> element", beanElement);
@@ -1184,7 +1181,7 @@ public class BeanDefinitionParserDelegate {
 	/**
 	 * Parse a list element.
 	 */
-	public List parseListElement(Element collectionEle, BeanDefinition bd) {
+	public List<Object> parseListElement(Element collectionEle, BeanDefinition bd) {
 		String defaultElementType = collectionEle.getAttribute(VALUE_TYPE_ATTRIBUTE);
 		NodeList nl = collectionEle.getChildNodes();
 		ManagedList<Object> target = new ManagedList<Object>(nl.getLength());
@@ -1198,7 +1195,7 @@ public class BeanDefinitionParserDelegate {
 	/**
 	 * Parse a set element.
 	 */
-	public Set parseSetElement(Element collectionEle, BeanDefinition bd) {
+	public Set<Object> parseSetElement(Element collectionEle, BeanDefinition bd) {
 		String defaultElementType = collectionEle.getAttribute(VALUE_TYPE_ATTRIBUTE);
 		NodeList nl = collectionEle.getChildNodes();
 		ManagedSet<Object> target = new ManagedSet<Object>(nl.getLength());
@@ -1223,7 +1220,7 @@ public class BeanDefinitionParserDelegate {
 	/**
 	 * Parse a map element.
 	 */
-	public Map parseMapElement(Element mapEle, BeanDefinition bd) {
+	public Map<Object, Object> parseMapElement(Element mapEle, BeanDefinition bd) {
 		String defaultKeyType = mapEle.getAttribute(KEY_TYPE_ATTRIBUTE);
 		String defaultValueType = mapEle.getAttribute(VALUE_TYPE_ATTRIBUTE);
 
@@ -1454,7 +1451,7 @@ public class BeanDefinitionParserDelegate {
 		return finalDefinition;
 	}
 
-	private BeanDefinitionHolder decorateIfRequired(
+	public BeanDefinitionHolder decorateIfRequired(
 			Node node, BeanDefinitionHolder originalDef, BeanDefinition containingBd) {
 
 		String namespaceUri = getNamespaceURI(node);

@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,8 +40,9 @@ import org.springframework.web.util.WebUtils;
 /**
  * Mock implementation of the {@link javax.servlet.http.HttpServletResponse} interface.
  *
- * <p>As of Spring 4.0, this set of mocks is designed on a Servlet 3.0 baseline. Beyond that,
- * this MockHttpServletResponse is also compatible with Servlet 3.1's setContentLengthLong.
+ * <p>As of Spring 4.0, this set of mocks is designed on a Servlet 3.0 baseline.
+ * Beyond that, {@code MockHttpServletResponse} is also compatible with Servlet
+ * 3.1's {@code setContentLengthLong()} method.
  *
  * @author Juergen Hoeller
  * @author Rod Johnson
@@ -70,7 +71,7 @@ public class MockHttpServletResponse implements HttpServletResponse {
 
 	private boolean charset = false;
 
-	private final ByteArrayOutputStream content = new ByteArrayOutputStream();
+	private final ByteArrayOutputStream content = new ByteArrayOutputStream(1024);
 
 	private final ServletOutputStream outputStream = new ResponseServletOutputStream(this.content);
 
@@ -188,8 +189,8 @@ public class MockHttpServletResponse implements HttpServletResponse {
 
 	public String getContentAsString() throws UnsupportedEncodingException {
 		flushBuffer();
-		return (this.characterEncoding != null) ?
-				this.content.toString(this.characterEncoding) : this.content.toString();
+		return (this.characterEncoding != null ?
+				this.content.toString(this.characterEncoding) : this.content.toString());
 	}
 
 	@Override
@@ -217,8 +218,7 @@ public class MockHttpServletResponse implements HttpServletResponse {
 		if (contentType != null) {
 			int charsetIndex = contentType.toLowerCase().indexOf(CHARSET_PREFIX);
 			if (charsetIndex != -1) {
-				String encoding = contentType.substring(charsetIndex + CHARSET_PREFIX.length());
-				this.characterEncoding = encoding;
+				this.characterEncoding = contentType.substring(charsetIndex + CHARSET_PREFIX.length());
 				this.charset = true;
 			}
 			updateContentTypeHeader();
@@ -415,11 +415,13 @@ public class MockHttpServletResponse implements HttpServletResponse {
 	}
 
 	@Override
+	@Deprecated
 	public String encodeUrl(String url) {
 		return encodeURL(url);
 	}
 
 	@Override
+	@Deprecated
 	public String encodeRedirectUrl(String url) {
 		return encodeRedirectURL(url);
 	}
@@ -533,13 +535,18 @@ public class MockHttpServletResponse implements HttpServletResponse {
 
 	@Override
 	public void setStatus(int status) {
-		this.status = status;
+		if(!this.isCommitted()) {
+			this.status = status;
+		}
 	}
 
 	@Override
+	@Deprecated
 	public void setStatus(int status, String errorMessage) {
-		this.status = status;
-		this.errorMessage = errorMessage;
+		if(!this.isCommitted()) {
+			this.status = status;
+			this.errorMessage = errorMessage;
+		}
 	}
 
 	@Override

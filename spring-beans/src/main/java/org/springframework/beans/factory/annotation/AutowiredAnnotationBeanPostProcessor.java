@@ -51,7 +51,6 @@ import org.springframework.beans.factory.config.RuntimeBeanReference;
 import org.springframework.beans.factory.support.MergedBeanDefinitionPostProcessor;
 import org.springframework.beans.factory.support.RootBeanDefinition;
 import org.springframework.core.BridgeMethodResolver;
-import org.springframework.core.GenericTypeResolver;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.Ordered;
 import org.springframework.core.PriorityOrdered;
@@ -60,6 +59,7 @@ import org.springframework.core.annotation.AnnotationAttributes;
 import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.ReflectionUtils;
+import org.springframework.util.StringUtils;
 
 /**
  * {@link org.springframework.beans.factory.config.BeanPostProcessor} implementation
@@ -122,8 +122,8 @@ public class AutowiredAnnotationBeanPostProcessor extends InstantiationAwareBean
 	private final Map<Class<?>, Constructor<?>[]> candidateConstructorsCache =
 			new ConcurrentHashMap<Class<?>, Constructor<?>[]>(64);
 
-	private final Map<Class<?>, InjectionMetadata> injectionMetadataCache =
-			new ConcurrentHashMap<Class<?>, InjectionMetadata>(64);
+	private final Map<String, InjectionMetadata> injectionMetadataCache =
+			new ConcurrentHashMap<String, InjectionMetadata>(64);
 
 
 	/**
@@ -218,7 +218,7 @@ public class AutowiredAnnotationBeanPostProcessor extends InstantiationAwareBean
 	@Override
 	public void postProcessMergedBeanDefinition(RootBeanDefinition beanDefinition, Class<?> beanType, String beanName) {
 		if (beanType != null) {
-			InjectionMetadata metadata = findAutowiringMetadata(beanType);
+			InjectionMetadata metadata = findAutowiringMetadata(beanName, beanType);
 			metadata.checkConfigMembers(beanDefinition);
 		}
 	}
@@ -268,10 +268,10 @@ public class AutowiredAnnotationBeanPostProcessor extends InstantiationAwareBean
 						if (requiredConstructor == null && defaultConstructor != null) {
 							candidates.add(defaultConstructor);
 						}
-						candidateConstructors = candidates.toArray(new Constructor[candidates.size()]);
+						candidateConstructors = candidates.toArray(new Constructor<?>[candidates.size()]);
 					}
 					else {
-						candidateConstructors = new Constructor[0];
+						candidateConstructors = new Constructor<?>[0];
 					}
 					this.candidateConstructorsCache.put(beanClass, candidateConstructors);
 				}
@@ -284,7 +284,7 @@ public class AutowiredAnnotationBeanPostProcessor extends InstantiationAwareBean
 	public PropertyValues postProcessPropertyValues(
 			PropertyValues pvs, PropertyDescriptor[] pds, Object bean, String beanName) throws BeansException {
 
-		InjectionMetadata metadata = findAutowiringMetadata(bean.getClass());
+		InjectionMetadata metadata = findAutowiringMetadata(beanName, bean.getClass());
 		try {
 			metadata.inject(bean, beanName, pvs);
 		}
@@ -302,7 +302,7 @@ public class AutowiredAnnotationBeanPostProcessor extends InstantiationAwareBean
 	 */
 	public void processInjection(Object bean) throws BeansException {
 		Class<?> clazz = bean.getClass();
-		InjectionMetadata metadata = findAutowiringMetadata(clazz);
+		InjectionMetadata metadata = findAutowiringMetadata(clazz.getName(), clazz);
 		try {
 			metadata.inject(bean, null, null);
 		}
@@ -312,15 +312,17 @@ public class AutowiredAnnotationBeanPostProcessor extends InstantiationAwareBean
 	}
 
 
-	private InjectionMetadata findAutowiringMetadata(Class<?> clazz) {
+	private InjectionMetadata findAutowiringMetadata(String beanName, Class<?> clazz) {
 		// Quick check on the concurrent map first, with minimal locking.
-		InjectionMetadata metadata = this.injectionMetadataCache.get(clazz);
-		if (metadata == null) {
+		// Fall back to class name as cache key, for backwards compatibility with custom callers.
+		String cacheKey = (StringUtils.hasLength(beanName) ? beanName : clazz.getName());
+		InjectionMetadata metadata = this.injectionMetadataCache.get(cacheKey);
+		if (InjectionMetadata.needsRefresh(metadata, clazz)) {
 			synchronized (this.injectionMetadataCache) {
-				metadata = this.injectionMetadataCache.get(clazz);
-				if (metadata == null) {
+				metadata = this.injectionMetadataCache.get(cacheKey);
+				if (InjectionMetadata.needsRefresh(metadata, clazz)) {
 					metadata = buildAutowiringMetadata(clazz);
-					this.injectionMetadataCache.put(clazz, metadata);
+					this.injectionMetadataCache.put(cacheKey, metadata);
 				}
 			}
 		}
@@ -471,14 +473,15 @@ public class AutowiredAnnotationBeanPostProcessor extends InstantiationAwareBean
 					value = resolvedCachedArgument(beanName, this.cachedFieldValue);
 				}
 				else {
-					DependencyDescriptor descriptor = new DependencyDescriptor(field, this.required);
+					DependencyDescriptor desc = new DependencyDescriptor(field, this.required);
+					desc.setContainingClass(bean.getClass());
 					Set<String> autowiredBeanNames = new LinkedHashSet<String>(1);
 					TypeConverter typeConverter = beanFactory.getTypeConverter();
-					value = beanFactory.resolveDependency(descriptor, beanName, autowiredBeanNames, typeConverter);
+					value = beanFactory.resolveDependency(desc, beanName, autowiredBeanNames, typeConverter);
 					synchronized (this) {
 						if (!this.cached) {
 							if (value != null || this.required) {
-								this.cachedFieldValue = descriptor;
+								this.cachedFieldValue = desc;
 								registerDependentBeans(beanName, autowiredBeanNames);
 								if (autowiredBeanNames.size() == 1) {
 									String autowiredBeanName = autowiredBeanNames.iterator().next();
@@ -544,10 +547,10 @@ public class AutowiredAnnotationBeanPostProcessor extends InstantiationAwareBean
 					TypeConverter typeConverter = beanFactory.getTypeConverter();
 					for (int i = 0; i < arguments.length; i++) {
 						MethodParameter methodParam = new MethodParameter(method, i);
-						GenericTypeResolver.resolveParameterType(methodParam, bean.getClass());
-						descriptors[i] = new DependencyDescriptor(methodParam, this.required);
-						Object arg = beanFactory.resolveDependency(
-								descriptors[i], beanName, autowiredBeanNames, typeConverter);
+						DependencyDescriptor desc = new DependencyDescriptor(methodParam, this.required);
+						desc.setContainingClass(bean.getClass());
+						descriptors[i] = desc;
+						Object arg = beanFactory.resolveDependency(desc, beanName, autowiredBeanNames, typeConverter);
 						if (arg == null && !this.required) {
 							arguments = null;
 							break;

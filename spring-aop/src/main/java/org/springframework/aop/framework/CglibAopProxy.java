@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
+import org.aopalliance.aop.Advice;
+import org.aopalliance.intercept.MethodInvocation;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
+import org.springframework.aop.Advisor;
+import org.springframework.aop.AopInvocationException;
+import org.springframework.aop.PointcutAdvisor;
+import org.springframework.aop.RawTargetAccess;
+import org.springframework.aop.TargetSource;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.cglib.core.CodeGenerationException;
+import org.springframework.cglib.core.SpringNamingPolicy;
 import org.springframework.cglib.proxy.Callback;
 import org.springframework.cglib.proxy.CallbackFilter;
 import org.springframework.cglib.proxy.Dispatcher;
@@ -34,18 +46,7 @@ import org.springframework.cglib.proxy.Factory;
 import org.springframework.cglib.proxy.MethodInterceptor;
 import org.springframework.cglib.proxy.MethodProxy;
 import org.springframework.cglib.proxy.NoOp;
-import org.springframework.cglib.transform.impl.MemorySafeUndeclaredThrowableStrategy;
-
-import org.aopalliance.aop.Advice;
-import org.aopalliance.intercept.MethodInvocation;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.springframework.aop.Advisor;
-import org.springframework.aop.AopInvocationException;
-import org.springframework.aop.PointcutAdvisor;
-import org.springframework.aop.RawTargetAccess;
-import org.springframework.aop.TargetSource;
-import org.springframework.aop.support.AopUtils;
+import org.springframework.cglib.transform.impl.UndeclaredThrowableStrategy;
 import org.springframework.core.SmartClassLoader;
 import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
@@ -183,19 +184,19 @@ class CglibAopProxy implements AopProxy, Serializable {
 				}
 			}
 			enhancer.setSuperclass(proxySuperClass);
-			enhancer.setStrategy(new MemorySafeUndeclaredThrowableStrategy(UndeclaredThrowableException.class));
 			enhancer.setInterfaces(AopProxyUtils.completeProxiedInterfaces(this.advised));
+			enhancer.setNamingPolicy(SpringNamingPolicy.INSTANCE);
+			enhancer.setStrategy(new UndeclaredThrowableStrategy(UndeclaredThrowableException.class));
 
 			Callback[] callbacks = getCallbacks(rootClass);
-			Class<?>[] types = new Class[callbacks.length];
-
+			Class<?>[] types = new Class<?>[callbacks.length];
 			for (int x = 0; x < types.length; x++) {
 				types[x] = callbacks[x].getClass();
 			}
-
-			enhancer.setCallbackTypes(types);
+			// fixedInterceptorMap only populated at this point, after getCallbacks call above
 			enhancer.setCallbackFilter(new ProxyCallbackFilter(
 					this.advised.getConfigurationOnlyCopy(), this.fixedInterceptorMap, this.fixedInterceptorOffset));
+			enhancer.setCallbackTypes(types);
 
 			// Generate the proxy class and create a proxy instance.
 			return createProxyClassAndInstance(enhancer, callbacks);
@@ -219,12 +220,11 @@ class CglibAopProxy implements AopProxy, Serializable {
 	}
 
 	protected Object createProxyClassAndInstance(Enhancer enhancer, Callback[] callbacks) {
-
 		enhancer.setInterceptDuringConstruction(false);
 		enhancer.setCallbacks(callbacks);
-
-		return this.constructorArgs == null ? enhancer.create() : enhancer.create(
-				this.constructorArgTypes, this.constructorArgs);
+		return (this.constructorArgs != null ?
+				enhancer.create(this.constructorArgTypes, this.constructorArgs) :
+				enhancer.create());
 	}
 
 	/**
@@ -255,11 +255,14 @@ class CglibAopProxy implements AopProxy, Serializable {
 	 * for each one found.
 	 */
 	private void doValidateClass(Class<?> proxySuperClass) {
-		Method[] methods = proxySuperClass.getMethods();
-		for (Method method : methods) {
-			if (!Object.class.equals(method.getDeclaringClass()) && Modifier.isFinal(method.getModifiers())) {
-				logger.warn("Unable to proxy method [" + method + "] because it is final: " +
-						"All calls to this method via a proxy will be routed directly to the proxy.");
+		if (logger.isWarnEnabled()) {
+			Method[] methods = proxySuperClass.getMethods();
+			for (Method method : methods) {
+				if (!Object.class.equals(method.getDeclaringClass()) && !Modifier.isStatic(method.getModifiers()) &&
+						Modifier.isFinal(method.getModifiers())) {
+					logger.warn("Unable to proxy method [" + method + "] because it is final: " +
+							"All calls to this method via a proxy will be routed directly to the proxy.");
+				}
 			}
 		}
 	}
@@ -311,8 +314,7 @@ class CglibAopProxy implements AopProxy, Serializable {
 			Callback[] fixedCallbacks = new Callback[methods.length];
 			this.fixedInterceptorMap = new HashMap<String, Integer>(methods.length);
 
-			// TODO: small memory optimisation here (can skip creation for
-			// methods with no advice)
+			// TODO: small memory optimisation here (can skip creation for methods with no advice)
 			for (int x = 0; x < methods.length; x++) {
 				List<Object> chain = this.advised.getInterceptorsAndDynamicInterceptionAdvice(methods[x], rootClass);
 				fixedCallbacks[x] = new FixedChainStaticTargetInterceptor(
@@ -339,16 +341,15 @@ class CglibAopProxy implements AopProxy, Serializable {
 	 */
 	private static Object processReturnType(Object proxy, Object target, Method method, Object retVal) {
 		// Massage return value if necessary
-		if (retVal != null && retVal == target &&
-				!RawTargetAccess.class.isAssignableFrom(method.getDeclaringClass())) {
-			// Special case: it returned "this".
-			// Note that we can't help if the target sets a reference
-			// to itself in another returned object.
+		if (retVal != null && retVal == target && !RawTargetAccess.class.isAssignableFrom(method.getDeclaringClass())) {
+			// Special case: it returned "this". Note that we can't help
+			// if the target sets a reference to itself in another returned object.
 			retVal = proxy;
 		}
 		Class<?> returnType = method.getReturnType();
 		if (retVal == null && returnType != Void.TYPE && returnType.isPrimitive()) {
-				throw new AopInvocationException("Null return value from advice does not match primitive return type for: " + method);
+			throw new AopInvocationException(
+					"Null return value from advice does not match primitive return type for: " + method);
 		}
 		return retVal;
 	}
@@ -861,7 +862,7 @@ class CglibAopProxy implements AopProxy, Serializable {
 
 		@Override
 		public boolean equals(Object other) {
-			if (other == this) {
+			if (this == other) {
 				return true;
 			}
 			if (!(other instanceof ProxyCallbackFilter)) {

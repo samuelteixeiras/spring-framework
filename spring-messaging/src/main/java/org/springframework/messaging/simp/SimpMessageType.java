@@ -16,7 +16,6 @@
 
 package org.springframework.messaging.simp;
 
-
 /**
  * A generic representation of different kinds of messages found in simple messaging
  * protocols like STOMP.
@@ -27,6 +26,10 @@ package org.springframework.messaging.simp;
 public enum SimpMessageType {
 
 	CONNECT,
+
+	CONNECT_ACK,
+
+	HEARTBEAT,
 
 	MESSAGE,
 

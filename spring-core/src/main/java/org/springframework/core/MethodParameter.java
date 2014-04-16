@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.lang.reflect.TypeVariable;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -44,9 +43,11 @@ public class MethodParameter {
 
 	private final Method method;
 
-	private final Constructor constructor;
+	private final Constructor<?> constructor;
 
 	private final int parameterIndex;
+
+	private Class<?> containingClass;
 
 	private Class<?> parameterType;
 
@@ -62,10 +63,6 @@ public class MethodParameter {
 
 	/** Map from Integer level to Integer type index */
 	Map<Integer, Integer> typeIndexesPerLevel;
-
-	Map<TypeVariable, Type> typeVariableMap;
-
-	private int hash = 0;
 
 
 	/**
@@ -100,7 +97,7 @@ public class MethodParameter {
 	 * @param constructor the Constructor to specify a parameter for
 	 * @param parameterIndex the index of the parameter
 	 */
-	public MethodParameter(Constructor constructor, int parameterIndex) {
+	public MethodParameter(Constructor<?> constructor, int parameterIndex) {
 		this(constructor, parameterIndex, 1);
 	}
 
@@ -112,7 +109,7 @@ public class MethodParameter {
 	 * (typically 1; e.g. in case of a List of Lists, 1 would indicate the
 	 * nested List, whereas 2 would indicate the element of the nested List)
 	 */
-	public MethodParameter(Constructor constructor, int parameterIndex, int nestingLevel) {
+	public MethodParameter(Constructor<?> constructor, int parameterIndex, int nestingLevel) {
 		Assert.notNull(constructor, "Constructor must not be null");
 		this.constructor = constructor;
 		this.parameterIndex = parameterIndex;
@@ -130,6 +127,7 @@ public class MethodParameter {
 		this.method = original.method;
 		this.constructor = original.constructor;
 		this.parameterIndex = original.parameterIndex;
+		this.containingClass = original.containingClass;
 		this.parameterType = original.parameterType;
 		this.genericParameterType = original.genericParameterType;
 		this.parameterAnnotations = original.parameterAnnotations;
@@ -137,8 +135,6 @@ public class MethodParameter {
 		this.parameterName = original.parameterName;
 		this.nestingLevel = original.nestingLevel;
 		this.typeIndexesPerLevel = original.typeIndexesPerLevel;
-		this.typeVariableMap = original.typeVariableMap;
-		this.hash = original.hash;
 	}
 
 
@@ -156,7 +152,7 @@ public class MethodParameter {
 	 * <p>Note: Either Method or Constructor is available.
 	 * @return the Constructor, or {@code null} if none
 	 */
-	public Constructor getConstructor() {
+	public Constructor<?> getConstructor() {
 		return this.constructor;
 	}
 
@@ -195,7 +191,7 @@ public class MethodParameter {
 	/**
 	 * Return the class that declares the underlying Method or Constructor.
 	 */
-	public Class getDeclaringClass() {
+	public Class<?> getDeclaringClass() {
 		return getMember().getDeclaringClass();
 	}
 
@@ -205,6 +201,17 @@ public class MethodParameter {
 	 */
 	public int getParameterIndex() {
 		return this.parameterIndex;
+	}
+
+	/**
+	 * Set a containing class to resolve the parameter type against.
+	 */
+	void setContainingClass(Class<?> containingClass) {
+		this.containingClass = containingClass;
+	}
+
+	public Class<?> getContainingClass() {
+		return (this.containingClass != null ? this.containingClass : getDeclaringClass());
 	}
 
 	/**
@@ -255,14 +262,15 @@ public class MethodParameter {
 			Type type = getGenericParameterType();
 			if (type instanceof ParameterizedType) {
 				Integer index = getTypeIndexForCurrentLevel();
-				Type arg = ((ParameterizedType) type).getActualTypeArguments()[index != null ? index : 0];
+				Type[] args = ((ParameterizedType) type).getActualTypeArguments();
+				Type arg = args[index != null ? index : args.length - 1];
 				if (arg instanceof Class) {
-					return (Class) arg;
+					return (Class<?>) arg;
 				}
 				else if (arg instanceof ParameterizedType) {
 					arg = ((ParameterizedType) arg).getRawType();
 					if (arg instanceof Class) {
-						return (Class) arg;
+						return (Class<?>) arg;
 					}
 				}
 			}
@@ -439,29 +447,14 @@ public class MethodParameter {
 		}
 		if (obj != null && obj instanceof MethodParameter) {
 			MethodParameter other = (MethodParameter) obj;
-
-			if (this.parameterIndex != other.parameterIndex) {
-				return false;
-			}
-			else if (this.getMember().equals(other.getMember())) {
-				return true;
-			}
-			else {
-				return false;
-			}
+			return (this.parameterIndex == other.parameterIndex && getMember().equals(other.getMember()));
 		}
 		return false;
 	}
 
 	@Override
 	public int hashCode() {
-		int result = this.hash;
-		if (result == 0) {
-			result = getMember().hashCode();
-			result = 31 * result + this.parameterIndex;
-			this.hash = result;
-		}
-		return result;
+		return (getMember().hashCode() * 31 + this.parameterIndex);
 	}
 
 
@@ -478,7 +471,7 @@ public class MethodParameter {
 			return new MethodParameter((Method) methodOrConstructor, parameterIndex);
 		}
 		else if (methodOrConstructor instanceof Constructor) {
-			return new MethodParameter((Constructor) methodOrConstructor, parameterIndex);
+			return new MethodParameter((Constructor<?>) methodOrConstructor, parameterIndex);
 		}
 		else {
 			throw new IllegalArgumentException(

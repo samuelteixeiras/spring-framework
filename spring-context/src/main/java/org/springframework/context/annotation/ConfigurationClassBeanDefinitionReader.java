@@ -107,8 +107,8 @@ class ConfigurationClassBeanDefinitionReader {
 
 
 	/**
-	 * Read {@code configurationModel}, registering bean definitions with {@link #registry}
-	 * based on its contents.
+	 * Read {@code configurationModel}, registering bean definitions
+	 * with the registry based on its contents.
 	 */
 	public void loadBeanDefinitions(Set<ConfigurationClass> configurationModel) {
 		TrackedConditionEvaluator trackedConditionEvaluator = new TrackedConditionEvaluator();
@@ -136,12 +136,13 @@ class ConfigurationClassBeanDefinitionReader {
 			loadBeanDefinitionsForBeanMethod(beanMethod);
 		}
 		loadBeanDefinitionsFromImportedResources(configClass.getImportedResources());
-		loadBeanDefinitionsFromRegistrars(configClass.getMetadata(), configClass.getImportBeanDefinitionRegistrars());
+		loadBeanDefinitionsFromRegistrars(configClass.getImportBeanDefinitionRegistrars());
 	}
 
 	private void removeBeanDefinition(ConfigurationClass configClass) {
-		if (StringUtils.hasLength(configClass.getBeanName()) && this.registry.containsBeanDefinition(configClass.getBeanName())) {
-			this.registry.removeBeanDefinition(configClass.getBeanName());
+		String beanName = configClass.getBeanName();
+		if (StringUtils.hasLength(beanName) && this.registry.containsBeanDefinition(beanName)) {
+			this.registry.removeBeanDefinition(beanName);
 		}
 	}
 
@@ -173,6 +174,7 @@ class ConfigurationClassBeanDefinitionReader {
 		if (this.conditionEvaluator.shouldSkip(beanMethod.getMetadata(), ConfigurationPhase.REGISTER_BEAN)) {
 			return;
 		}
+
 		ConfigurationClass configClass = beanMethod.getConfigurationClass();
 		MethodMetadata metadata = beanMethod.getMetadata();
 
@@ -200,7 +202,7 @@ class ConfigurationClassBeanDefinitionReader {
 			this.registry.registerAlias(beanName, alias);
 		}
 
-		// Has this  effectively been overridden before (e.g. via XML)?
+		// Has this effectively been overridden before (e.g. via XML)?
 		if (isOverriddenByExistingDefinition(beanMethod, beanName)) {
 			return;
 		}
@@ -257,9 +259,12 @@ class ConfigurationClassBeanDefinitionReader {
 		BeanDefinition existingBeanDef = this.registry.getBeanDefinition(beanName);
 
 		// Is the existing bean definition one that was created from a configuration class?
-		// -> allow the current bean method to override, since both are at second-pass level
+		// -> allow the current bean method to override, since both are at second-pass level.
+		// However, if the bean method is an overloaded case on the same configuration class,
+		// preserve the existing bean definition.
 		if (existingBeanDef instanceof ConfigurationClassBeanDefinition) {
-			return false;
+			ConfigurationClassBeanDefinition ccbd = (ConfigurationClassBeanDefinition) existingBeanDef;
+			return (ccbd.getMetadata().getClassName().equals(beanMethod.getConfigurationClass().getMetadata().getClassName()));
 		}
 
 		// Has the existing bean definition bean marked as a framework-generated bean?
@@ -299,7 +304,8 @@ class ConfigurationClassBeanDefinitionReader {
 					readerInstanceCache.put(readerClass, readerInstance);
 				}
 				catch (Exception ex) {
-					throw new IllegalStateException("Could not instantiate BeanDefinitionReader class [" + readerClass.getName() + "]");
+					throw new IllegalStateException(
+							"Could not instantiate BeanDefinitionReader class [" + readerClass.getName() + "]");
 				}
 			}
 			BeanDefinitionReader reader = readerInstanceCache.get(readerClass);
@@ -308,11 +314,9 @@ class ConfigurationClassBeanDefinitionReader {
 		}
 	}
 
-	private void loadBeanDefinitionsFromRegistrars(AnnotationMetadata importingClassMetadata,
-			Set<ImportBeanDefinitionRegistrar> importBeanDefinitionRegistrars) {
-
-		for (ImportBeanDefinitionRegistrar registrar : importBeanDefinitionRegistrars) {
-			registrar.registerBeanDefinitions(importingClassMetadata, this.registry);
+	private void loadBeanDefinitionsFromRegistrars(Map<ImportBeanDefinitionRegistrar, AnnotationMetadata> registrars) {
+		for (Map.Entry<ImportBeanDefinitionRegistrar, AnnotationMetadata> entry : registrars.entrySet()) {
+			entry.getKey().registerBeanDefinitions(entry.getValue(), this.registry);
 		}
 	}
 
@@ -330,6 +334,7 @@ class ConfigurationClassBeanDefinitionReader {
 
 		public ConfigurationClassBeanDefinition(ConfigurationClass configClass) {
 			this.annotationMetadata = configClass.getMetadata();
+			setLenientConstructorResolution(false);
 		}
 
 		public ConfigurationClassBeanDefinition(RootBeanDefinition original, ConfigurationClass configClass) {
@@ -375,7 +380,7 @@ class ConfigurationClassBeanDefinitionReader {
 
 
 	/**
-	 * Evaluate {@Code @Conditional} annotations, tracking results and taking into
+	 * Evaluate {@code @Conditional} annotations, tracking results and taking into
 	 * account 'imported by'.
 	 */
 	private class TrackedConditionEvaluator {

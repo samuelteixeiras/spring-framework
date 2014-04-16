@@ -28,6 +28,7 @@ import java.util.Locale;
 import java.util.Properties;
 import java.util.Set;
 import java.util.StringTokenizer;
+import java.util.TimeZone;
 import java.util.TreeSet;
 
 
@@ -209,7 +210,7 @@ public abstract class StringUtils {
 
 	/**
 	 * Trim <i>all</i> whitespace from the given String:
-	 * leading, trailing, and inbetween characters.
+	 * leading, trailing, and in between characters.
 	 * @param str the String to check
 	 * @return the trimmed String
 	 * @see java.lang.Character#isWhitespace
@@ -266,7 +267,7 @@ public abstract class StringUtils {
 	}
 
 	/**
-	 * Trim all occurences of the supplied leading character from the given String.
+	 * Trim all occurrences of the supplied leading character from the given String.
 	 * @param str the String to check
 	 * @param leadingCharacter the leading character to be trimmed
 	 * @return the trimmed String
@@ -283,7 +284,7 @@ public abstract class StringUtils {
 	}
 
 	/**
-	 * Trim all occurences of the supplied trailing character from the given String.
+	 * Trim all occurrences of the supplied trailing character from the given String.
 	 * @param str the String to check
 	 * @param trailingCharacter the trailing character to be trimmed
 	 * @return the trimmed String
@@ -382,7 +383,7 @@ public abstract class StringUtils {
 	}
 
 	/**
-	 * Replace all occurences of a substring within a string with
+	 * Replace all occurrences of a substring within a string with
 	 * another string.
 	 * @param inString String to examine
 	 * @param oldPattern String to replace
@@ -683,10 +684,11 @@ public abstract class StringUtils {
 	/**
 	 * Parse the given {@code localeString} value into a {@link Locale}.
 	 * <p>This is the inverse operation of {@link Locale#toString Locale's toString}.
-	 * @param localeString the locale string, following {@code Locale's}
+	 * @param localeString the locale String, following {@code Locale's}
 	 * {@code toString()} format ("en", "en_UK", etc);
 	 * also accepts spaces as separators, as an alternative to underscores
 	 * @return a corresponding {@code Locale} instance
+	 * @throws IllegalArgumentException in case of an invalid locale specification
 	 */
 	public static Locale parseLocaleString(String localeString) {
 		String[] parts = tokenizeToStringArray(localeString, "_ ", false, false);
@@ -695,7 +697,7 @@ public abstract class StringUtils {
 		validateLocalePart(language);
 		validateLocalePart(country);
 		String variant = "";
-		if (parts.length >= 2) {
+		if (parts.length > 2) {
 			// There is definitely a variant, and it is everything after the country
 			// code sans the separator between the country code and the variant.
 			int endIndexOfCountryCode = localeString.lastIndexOf(country) + country.length();
@@ -726,6 +728,22 @@ public abstract class StringUtils {
 	 */
 	public static String toLanguageTag(Locale locale) {
 		return locale.getLanguage() + (hasText(locale.getCountry()) ? "-" + locale.getCountry() : "");
+	}
+
+	/**
+	 * Parse the given {@code timeZoneString} value into a {@link TimeZone}.
+	 * @param timeZoneString the time zone String, following {@link TimeZone#getTimeZone(String)}
+	 * but throwing {@link IllegalArgumentException} in case of an invalid time zone specification
+	 * @return a corresponding {@link TimeZone} instance
+	 * @throws IllegalArgumentException in case of an invalid time zone specification
+	 */
+	public static TimeZone parseTimeZoneString(String timeZoneString) {
+		TimeZone timeZone = TimeZone.getTimeZone(timeZoneString);
+		if ("GMT".equals(timeZone.getID()) && !timeZoneString.startsWith("GMT")) {
+			// We don't want that GMT fallback...
+			throw new IllegalArgumentException("Invalid time zone specification '" + timeZoneString + "'");
+		}
+		return timeZone;
 	}
 
 

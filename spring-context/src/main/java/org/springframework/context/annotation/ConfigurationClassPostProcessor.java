@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,18 +17,17 @@
 package org.springframework.context.annotation;
 
 import java.beans.PropertyDescriptor;
-import java.io.IOException;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.Stack;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
-import org.springframework.beans.BeansException;
+import org.springframework.aop.framework.autoproxy.AutoProxyUtils;
 import org.springframework.beans.PropertyValues;
 import org.springframework.beans.factory.BeanClassLoaderAware;
 import org.springframework.beans.factory.BeanDefinitionStoreException;
@@ -66,7 +65,6 @@ import org.springframework.core.io.ResourceLoader;
 import org.springframework.core.type.AnnotationMetadata;
 import org.springframework.core.type.classreading.CachingMetadataReaderFactory;
 import org.springframework.core.type.classreading.MetadataReaderFactory;
-import org.springframework.core.type.classreading.SimpleMetadataReaderFactory;
 import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
 
@@ -91,7 +89,7 @@ import static org.springframework.context.annotation.AnnotationConfigUtils.*;
  * @since 3.0
  */
 public class ConfigurationClassPostProcessor implements BeanDefinitionRegistryPostProcessor,
-		ResourceLoaderAware, BeanClassLoaderAware, EnvironmentAware, PriorityOrdered {
+		PriorityOrdered, ResourceLoaderAware, BeanClassLoaderAware, EnvironmentAware {
 
 	private static final String IMPORT_AWARE_PROCESSOR_BEAN_NAME =
 			ConfigurationClassPostProcessor.class.getName() + ".importAwareProcessor";
@@ -139,6 +137,10 @@ public class ConfigurationClassPostProcessor implements BeanDefinitionRegistryPo
 	};
 
 
+	@Override
+	public int getOrder() {
+		return Ordered.LOWEST_PRECEDENCE;  // within PriorityOrdered
+	}
 
 	/**
 	 * Set the {@link SourceExtractor} to use for generated bean definitions
@@ -252,8 +254,8 @@ public class ConfigurationClassPostProcessor implements BeanDefinitionRegistryPo
 			throw new IllegalStateException(
 					"postProcessBeanFactory already called for this post-processor against " + beanFactory);
 		}
-		this.factoriesPostProcessed.add((factoryId));
-		if (!this.registriesPostProcessed.contains((factoryId))) {
+		this.factoriesPostProcessed.add(factoryId);
+		if (!this.registriesPostProcessed.contains(factoryId)) {
 			// BeanDefinitionRegistryPostProcessor hook apparently not supported...
 			// Simply call processConfigurationClasses lazily at this point then.
 			processConfigBeanDefinitions((BeanDefinitionRegistry) beanFactory);
@@ -298,16 +300,16 @@ public class ConfigurationClassPostProcessor implements BeanDefinitionRegistryPo
 		parser.validate();
 
 		// Handle any @PropertySource annotations
-		Stack<PropertySource<?>> parsedPropertySources = parser.getPropertySources();
+		List<PropertySource<?>> parsedPropertySources = parser.getPropertySources();
 		if (!parsedPropertySources.isEmpty()) {
 			if (!(this.environment instanceof ConfigurableEnvironment)) {
 				logger.warn("Ignoring @PropertySource annotations. " +
 						"Reason: Environment must implement ConfigurableEnvironment");
 			}
 			else {
-				MutablePropertySources envPropertySources = ((ConfigurableEnvironment)this.environment).getPropertySources();
-				while (!parsedPropertySources.isEmpty()) {
-					envPropertySources.addLast(parsedPropertySources.pop());
+				MutablePropertySources envPropertySources = ((ConfigurableEnvironment) this.environment).getPropertySources();
+				for (PropertySource<?> propertySource : parsedPropertySources) {
+					envPropertySources.addLast(propertySource);
 				}
 			}
 		}
@@ -319,7 +321,7 @@ public class ConfigurationClassPostProcessor implements BeanDefinitionRegistryPo
 					this.importBeanNameGenerator);
 		}
 
-		reader.loadBeanDefinitions(parser.getConfigurationClasses());
+		this.reader.loadBeanDefinitions(parser.getConfigurationClasses());
 
 		// Register the ImportRegistry as a bean in order to support ImportAware @Configuration classes
 		if (singletonRegistry != null) {
@@ -358,7 +360,10 @@ public class ConfigurationClassPostProcessor implements BeanDefinitionRegistryPo
 		ConfigurationClassEnhancer enhancer = new ConfigurationClassEnhancer();
 		for (Map.Entry<String, AbstractBeanDefinition> entry : configBeanDefs.entrySet()) {
 			AbstractBeanDefinition beanDef = entry.getValue();
+			// If a @Configuration class gets proxied, always proxy the target class
+			beanDef.setAttribute(AutoProxyUtils.PRESERVE_TARGET_CLASS_ATTRIBUTE, Boolean.TRUE);
 			try {
+				// Set enhanced subclass of the user-specified bean class
 				Class<?> configClass = beanDef.resolveBeanClass(this.beanClassLoader);
 				Class<?> enhancedClass = enhancer.enhance(configClass);
 				if (configClass != enhancedClass) {
@@ -375,52 +380,36 @@ public class ConfigurationClassPostProcessor implements BeanDefinitionRegistryPo
 		}
 	}
 
-	@Override
-	public int getOrder() {
-		return Ordered.LOWEST_PRECEDENCE;  // within PriorityOrdered
-	}
 
-
-	private static class ImportAwareBeanPostProcessor implements PriorityOrdered, BeanFactoryAware, BeanPostProcessor {
+	private static class ImportAwareBeanPostProcessor implements BeanPostProcessor, BeanFactoryAware, PriorityOrdered {
 
 		private BeanFactory beanFactory;
 
 		@Override
-		public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
+		public void setBeanFactory(BeanFactory beanFactory) {
 			this.beanFactory = beanFactory;
 		}
 
 		@Override
-		public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
+		public int getOrder() {
+			return Ordered.HIGHEST_PRECEDENCE;
+		}
+
+		@Override
+		public Object postProcessBeforeInitialization(Object bean, String beanName)  {
 			if (bean instanceof ImportAware) {
 				ImportRegistry importRegistry = this.beanFactory.getBean(IMPORT_REGISTRY_BEAN_NAME, ImportRegistry.class);
-				String importingClass = importRegistry.getImportingClassFor(bean.getClass().getSuperclass().getName());
+				AnnotationMetadata importingClass = importRegistry.getImportingClassFor(bean.getClass().getSuperclass().getName());
 				if (importingClass != null) {
-					try {
-						AnnotationMetadata metadata =
-								new SimpleMetadataReaderFactory().getMetadataReader(importingClass).getAnnotationMetadata();
-						((ImportAware) bean).setImportMetadata(metadata);
-					}
-					catch (IOException ex) {
-						// should never occur -> at this point we know the class is present anyway
-						throw new IllegalStateException(ex);
-					}
-				}
-				else {
-					// no importing class was found
+					((ImportAware) bean).setImportMetadata(importingClass);
 				}
 			}
 			return bean;
 		}
 
 		@Override
-		public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
+		public Object postProcessAfterInitialization(Object bean, String beanName) {
 			return bean;
-		}
-
-		@Override
-		public int getOrder() {
-			return Ordered.HIGHEST_PRECEDENCE;
 		}
 	}
 
@@ -430,9 +419,8 @@ public class ConfigurationClassPostProcessor implements BeanDefinitionRegistryPo
 	 * {@link EnhancedConfiguration} beans are injected with the {@link BeanFactory}
 	 * before the {@link AutowiredAnnotationBeanPostProcessor} runs (SPR-10668).
 	 */
-	private static class EnhancedConfigurationBeanPostProcessor extends
-			InstantiationAwareBeanPostProcessorAdapter implements PriorityOrdered,
-			BeanFactoryAware {
+	private static class EnhancedConfigurationBeanPostProcessor extends InstantiationAwareBeanPostProcessorAdapter
+			implements PriorityOrdered, BeanFactoryAware {
 
 		private BeanFactory beanFactory;
 
@@ -442,21 +430,18 @@ public class ConfigurationClassPostProcessor implements BeanDefinitionRegistryPo
 		}
 
 		@Override
-		public PropertyValues postProcessPropertyValues(PropertyValues pvs,
-				PropertyDescriptor[] pds, Object bean, String beanName)
-				throws BeansException {
+		public void setBeanFactory(BeanFactory beanFactory) {
+			this.beanFactory = beanFactory;
+		}
+
+		@Override
+		public PropertyValues postProcessPropertyValues(PropertyValues pvs, PropertyDescriptor[] pds, Object bean, String beanName) {
 			// Inject the BeanFactory before AutowiredAnnotationBeanPostProcessor's
-			// postProcessPropertyValues method attempts to auto-wire other configuration
-			// beans.
+			// postProcessPropertyValues method attempts to auto-wire other configuration beans.
 			if (bean instanceof EnhancedConfiguration) {
 				((EnhancedConfiguration) bean).setBeanFactory(this.beanFactory);
 			}
 			return pvs;
-		}
-
-		@Override
-		public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
-			this.beanFactory = beanFactory;
 		}
 
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,16 +28,16 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.http.nio.client.HttpAsyncClient;
-import org.apache.http.nio.reactor.IOReactorStatus;
 import org.apache.http.protocol.HttpContext;
+
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.http.HttpMethod;
 import org.springframework.util.Assert;
 
 /**
  * Asynchronous extension of the {@link HttpComponentsClientHttpRequestFactory}. Uses
-  * <a href="http://hc.apache.org/httpcomponents-asyncclient-dev/">Apache HttpComponents
- * HttpAsyncClient</a> to create requests.
+ * <a href="http://hc.apache.org/httpcomponents-asyncclient-dev/">Apache HttpComponents
+ * HttpAsyncClient 4.0</a> to create requests.
  *
  * @author Arjen Poutsma
  * @since 4.0
@@ -75,12 +75,14 @@ public class HttpComponentsAsyncClientHttpRequestFactory
 	 * @param httpClient the HttpClient instance to use for this request factory
 	 * @param httpAsyncClient the HttpAsyncClient instance to use for this request factory
 	 */
-	public HttpComponentsAsyncClientHttpRequestFactory(CloseableHttpClient httpClient,
-                                                       CloseableHttpAsyncClient httpAsyncClient) {
+	public HttpComponentsAsyncClientHttpRequestFactory(
+			CloseableHttpClient httpClient, CloseableHttpAsyncClient httpAsyncClient) {
+
 		super(httpClient);
 		Assert.notNull(httpAsyncClient, "'httpAsyncClient' must not be null");
 		this.httpAsyncClient = httpAsyncClient;
 	}
+
 
 	/**
 	 * Set the {@code HttpClient} used for
@@ -105,14 +107,13 @@ public class HttpComponentsAsyncClientHttpRequestFactory
 
 	private void startAsyncClient() {
         CloseableHttpAsyncClient asyncClient = getHttpAsyncClient();
-		if (asyncClient.getStatus() != IOReactorStatus.ACTIVE) {
+		if (!asyncClient.isRunning()) {
 			asyncClient.start();
 		}
 	}
 
 	@Override
-	public AsyncClientHttpRequest createAsyncRequest(URI uri, HttpMethod httpMethod)
-			throws IOException {
+	public AsyncClientHttpRequest createAsyncRequest(URI uri, HttpMethod httpMethod) throws IOException {
 		HttpAsyncClient asyncClient = getHttpAsyncClient();
 		startAsyncClient();
 		HttpUriRequest httpRequest = createHttpUriRequest(httpMethod, uri);
@@ -145,4 +146,5 @@ public class HttpComponentsAsyncClientHttpRequestFactory
 			getHttpAsyncClient().close();
 		}
 	}
+
 }

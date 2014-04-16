@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -73,6 +73,7 @@ import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.method.HandlerMethodSelector;
 import org.springframework.web.method.annotation.ErrorsMethodArgumentResolver;
 import org.springframework.web.method.annotation.ExpressionValueMethodArgumentResolver;
+import org.springframework.web.method.annotation.InitBinderDataBinderFactory;
 import org.springframework.web.method.annotation.MapMethodProcessor;
 import org.springframework.web.method.annotation.ModelAttributeMethodProcessor;
 import org.springframework.web.method.annotation.ModelFactory;
@@ -112,8 +113,8 @@ import org.springframework.web.util.WebUtils;
  * @see HandlerMethodArgumentResolver
  * @see HandlerMethodReturnValueHandler
  */
-public class RequestMappingHandlerAdapter extends AbstractHandlerMethodAdapter implements BeanFactoryAware,
-		InitializingBean {
+public class RequestMappingHandlerAdapter extends AbstractHandlerMethodAdapter
+		implements BeanFactoryAware, InitializingBean {
 
 	private List<HandlerMethodArgumentResolver> customArgumentResolvers;
 
@@ -218,7 +219,7 @@ public class RequestMappingHandlerAdapter extends AbstractHandlerMethodAdapter i
 	 * not initialized yet via {@link #afterPropertiesSet()}.
 	 */
 	public List<HandlerMethodArgumentResolver> getArgumentResolvers() {
-		return this.argumentResolvers.getResolvers();
+		return (this.argumentResolvers != null) ? this.argumentResolvers.getResolvers() : null;
 	}
 
 	/**
@@ -239,7 +240,7 @@ public class RequestMappingHandlerAdapter extends AbstractHandlerMethodAdapter i
 	 * {@code null} if not initialized yet via {@link #afterPropertiesSet()}.
 	 */
 	public List<HandlerMethodArgumentResolver> getInitBinderArgumentResolvers() {
-		return this.initBinderArgumentResolvers.getResolvers();
+		return (this.initBinderArgumentResolvers != null) ? this.initBinderArgumentResolvers.getResolvers() : null;
 	}
 
 	/**
@@ -583,6 +584,7 @@ public class RequestMappingHandlerAdapter extends AbstractHandlerMethodAdapter i
 		handlers.add(new ModelMethodProcessor());
 		handlers.add(new ViewMethodReturnValueHandler());
 		handlers.add(new HttpEntityMethodProcessor(getMessageConverters(), this.contentNegotiationManager));
+		handlers.add(new HttpHeadersReturnValueHandler());
 		handlers.add(new CallableMethodReturnValueHandler());
 		handlers.add(new DeferredResultMethodReturnValueHandler());
 		handlers.add(new AsyncTaskMethodReturnValueHandler(this.beanFactory));
@@ -695,7 +697,7 @@ public class RequestMappingHandlerAdapter extends AbstractHandlerMethodAdapter i
 		Class<?> handlerType = handlerMethod.getBeanType();
 		SessionAttributesHandler sessionAttrHandler = this.sessionAttributesHandlerCache.get(handlerType);
 		if (sessionAttrHandler == null) {
-			synchronized(this.sessionAttributesHandlerCache) {
+			synchronized (this.sessionAttributesHandlerCache) {
 				sessionAttrHandler = this.sessionAttributesHandlerCache.get(handlerType);
 				if (sessionAttrHandler == null) {
 					sessionAttrHandler = new SessionAttributesHandler(handlerType, sessionAttributeStore);
@@ -707,7 +709,8 @@ public class RequestMappingHandlerAdapter extends AbstractHandlerMethodAdapter i
 	}
 
 	/**
-	 * Invoke the {@link RequestMapping} handler method preparing a {@link ModelAndView} if view resolution is required.
+	 * Invoke the {@link RequestMapping} handler method preparing a {@link ModelAndView}
+	 * if view resolution is required.
 	 */
 	private ModelAndView invokeHandleMethod(HttpServletRequest request,
 			HttpServletResponse response, HandlerMethod handlerMethod) throws Exception {
@@ -775,9 +778,11 @@ public class RequestMappingHandlerAdapter extends AbstractHandlerMethodAdapter i
 		List<InvocableHandlerMethod> attrMethods = new ArrayList<InvocableHandlerMethod>();
 		// Global methods first
 		for (Entry<ControllerAdviceBean, Set<Method>> entry : this.modelAttributeAdviceCache.entrySet()) {
-			Object bean = entry.getKey().resolveBean();
-			for (Method method : entry.getValue()) {
-				attrMethods.add(createModelAttributeMethod(binderFactory, bean, method));
+			if (entry.getKey().isApplicableToBeanType(handlerType)) {
+				Object bean = entry.getKey().resolveBean();
+				for (Method method : entry.getValue()) {
+					attrMethods.add(createModelAttributeMethod(binderFactory, bean, method));
+				}
 			}
 		}
 		for (Method method : methods) {
@@ -805,9 +810,11 @@ public class RequestMappingHandlerAdapter extends AbstractHandlerMethodAdapter i
 		List<InvocableHandlerMethod> initBinderMethods = new ArrayList<InvocableHandlerMethod>();
 		// Global methods first
 		for (Entry<ControllerAdviceBean, Set<Method>> entry : this.initBinderAdviceCache .entrySet()) {
-			Object bean = entry.getKey().resolveBean();
-			for (Method method : entry.getValue()) {
-				initBinderMethods.add(createInitBinderMethod(bean, method));
+			if (entry.getKey().isApplicableToBeanType(handlerType)) {
+				Object bean = entry.getKey().resolveBean();
+				for (Method method : entry.getValue()) {
+					initBinderMethods.add(createInitBinderMethod(bean, method));
+				}
 			}
 		}
 		for (Method method : methods) {
@@ -826,14 +833,14 @@ public class RequestMappingHandlerAdapter extends AbstractHandlerMethodAdapter i
 	}
 
 	/**
-	 * Template method to create a new ServletRequestDataBinderFactory instance.
+	 * Template method to create a new InitBinderDataBinderFactory instance.
 	 * <p>The default implementation creates a ServletRequestDataBinderFactory.
 	 * This can be overridden for custom ServletRequestDataBinder subclasses.
 	 * @param binderMethods {@code @InitBinder} methods
-	 * @return the ServletRequestDataBinderFactory instance to use
+	 * @return the InitBinderDataBinderFactory instance to use
 	 * @throws Exception in case of invalid state or arguments
 	 */
-	protected ServletRequestDataBinderFactory createDataBinderFactory(List<InvocableHandlerMethod> binderMethods)
+	protected InitBinderDataBinderFactory createDataBinderFactory(List<InvocableHandlerMethod> binderMethods)
 			throws Exception {
 
 		return new ServletRequestDataBinderFactory(binderMethods, getWebBindingInitializer());
@@ -843,7 +850,6 @@ public class RequestMappingHandlerAdapter extends AbstractHandlerMethodAdapter i
 			ModelFactory modelFactory, NativeWebRequest webRequest) throws Exception {
 
 		modelFactory.updateModel(webRequest, mavContainer);
-
 		if (mavContainer.isRequestHandled()) {
 			return null;
 		}

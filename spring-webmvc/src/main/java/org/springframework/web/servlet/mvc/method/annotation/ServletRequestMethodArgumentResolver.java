@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,17 +19,19 @@ package org.springframework.web.servlet.mvc.method.annotation;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
-import java.lang.reflect.Method;
 import java.security.Principal;
+import java.time.ZoneId;
 import java.util.Locale;
-
+import java.util.TimeZone;
 import javax.servlet.ServletRequest;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
 
 import org.springframework.core.MethodParameter;
+import org.springframework.http.HttpMethod;
 import org.springframework.web.bind.support.WebDataBinderFactory;
 import org.springframework.web.context.request.NativeWebRequest;
+import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
@@ -45,12 +47,16 @@ import org.springframework.web.servlet.support.RequestContextUtils;
  * <li>{@link HttpSession}
  * <li>{@link Principal}
  * <li>{@link Locale}
+ * <li>{@link TimeZone} (as of Spring 4.0)
+ * <li>{@link java.time.ZoneId} (as of Spring 4.0 and Java 8)</li>
  * <li>{@link InputStream}
  * <li>{@link Reader}
+ * <li>{@link org.springframework.http.HttpMethod} (as of Spring 4.0)</li>
  * </ul>
  *
  * @author Arjen Poutsma
  * @author Rossen Stoyanchev
+ * @author Juergen Hoeller
  * @since 3.1
  */
 public class ServletRequestMethodArgumentResolver implements HandlerMethodArgumentResolver {
@@ -64,8 +70,11 @@ public class ServletRequestMethodArgumentResolver implements HandlerMethodArgume
 				HttpSession.class.isAssignableFrom(paramType) ||
 				Principal.class.isAssignableFrom(paramType) ||
 				Locale.class.equals(paramType) ||
+				TimeZone.class.equals(paramType) ||
+				"java.time.ZoneId".equals(paramType.getName()) ||
 				InputStream.class.isAssignableFrom(paramType) ||
-				Reader.class.isAssignableFrom(paramType);
+				Reader.class.isAssignableFrom(paramType) ||
+				HttpMethod.class.equals(paramType);
 	}
 
 	@Override
@@ -91,11 +100,21 @@ public class ServletRequestMethodArgumentResolver implements HandlerMethodArgume
 		else if (HttpSession.class.isAssignableFrom(paramType)) {
 			return request.getSession();
 		}
+		else if (HttpMethod.class.equals(paramType)) {
+			return ((ServletWebRequest) webRequest).getHttpMethod();
+		}
 		else if (Principal.class.isAssignableFrom(paramType)) {
 			return request.getUserPrincipal();
 		}
 		else if (Locale.class.equals(paramType)) {
 			return RequestContextUtils.getLocale(request);
+		}
+		else if (TimeZone.class.equals(paramType)) {
+			TimeZone timeZone = RequestContextUtils.getTimeZone(request);
+			return (timeZone != null ? timeZone : TimeZone.getDefault());
+		}
+		else if ("java.time.ZoneId".equals(paramType.getName())) {
+			return ZoneIdResolver.resolveZoneId(request);
 		}
 		else if (InputStream.class.isAssignableFrom(paramType)) {
 			return request.getInputStream();
@@ -104,9 +123,21 @@ public class ServletRequestMethodArgumentResolver implements HandlerMethodArgume
 			return request.getReader();
 		}
 		else {
-			// should never happen..
-			Method method = parameter.getMethod();
-			throw new UnsupportedOperationException("Unknown parameter type: " + paramType + " in method: " + method);
+			// should never happen...
+			throw new UnsupportedOperationException(
+					"Unknown parameter type: " + paramType + " in method: " + parameter.getMethod());
+		}
+	}
+
+
+	/**
+	 * Inner class to avoid a hard-coded dependency on Java 8's {@link java.time.ZoneId}.
+	 */
+	private static class ZoneIdResolver {
+
+		public static Object resolveZoneId(HttpServletRequest request) {
+			TimeZone timeZone = RequestContextUtils.getTimeZone(request);
+			return (timeZone != null ? timeZone.toZoneId() : ZoneId.systemDefault());
 		}
 	}
 

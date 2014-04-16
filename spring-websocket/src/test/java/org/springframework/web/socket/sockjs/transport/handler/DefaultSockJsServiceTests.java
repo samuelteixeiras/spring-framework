@@ -16,39 +16,41 @@
 
 package org.springframework.web.socket.sockjs.transport.handler;
 
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.List;
 import java.util.Map;
 
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.web.socket.AbstractHttpRequestTests;
 import org.springframework.web.socket.WebSocketHandler;
+import org.springframework.web.socket.sockjs.transport.SockJsSessionFactory;
 import org.springframework.web.socket.sockjs.transport.TransportHandler;
+import org.springframework.web.socket.sockjs.transport.TransportHandlingSockJsService;
 import org.springframework.web.socket.sockjs.transport.TransportType;
 import org.springframework.web.socket.sockjs.transport.session.StubSockJsServiceConfig;
 import org.springframework.web.socket.sockjs.transport.session.TestSockJsSession;
 
 import static org.junit.Assert.*;
-import static org.mockito.Matchers.*;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
- * Test fixture for {@link DefaultSockJsService}.
+ * Test fixture for {@link org.springframework.web.socket.sockjs.transport.handler.DefaultSockJsService}.
  *
  * @author Rossen Stoyanchev
  */
 public class DefaultSockJsServiceTests extends AbstractHttpRequestTests {
 
-	private static final String sockJsPrefix = "mysockjs";
+	private static final String sockJsPrefix = "/mysockjs";
 
 	private static final String sessionId = "session1";
 
-	private static final String sessionUrlPrefix = "/mysockjs/server1/" + sessionId + "/";
+	private static final String sessionUrlPrefix = "/server1/" + sessionId + "/";
 
 
 	@Mock private SessionCreatingTransportHandler xhrHandler;
@@ -61,14 +63,12 @@ public class DefaultSockJsServiceTests extends AbstractHttpRequestTests {
 
 	private TestSockJsSession session;
 
-	private DefaultSockJsService service;
+	private TransportHandlingSockJsService service;
 
 
 	@Before
 	public void setup() {
-
 		super.setUp();
-
 		MockitoAnnotations.initMocks(this);
 
 		Map<String, Object> attributes = Collections.emptyMap();
@@ -78,14 +78,11 @@ public class DefaultSockJsServiceTests extends AbstractHttpRequestTests {
 		when(this.xhrHandler.createSession(sessionId, this.wsHandler, attributes)).thenReturn(this.session);
 		when(this.xhrSendHandler.getTransportType()).thenReturn(TransportType.XHR_SEND);
 
-		this.service = new DefaultSockJsService(this.taskScheduler,
-				Arrays.<TransportHandler>asList(this.xhrHandler, this.xhrSendHandler));
-		this.service.setValidSockJsPrefixes(sockJsPrefix);
+		this.service = new TransportHandlingSockJsService(this.taskScheduler, this.xhrHandler, this.xhrSendHandler);
 	}
 
 	@Test
 	public void defaultTransportHandlers() {
-
 		DefaultSockJsService service = new DefaultSockJsService(mock(TaskScheduler.class));
 		Map<TransportType, TransportHandler> handlers = service.getTransportHandlers();
 
@@ -102,10 +99,9 @@ public class DefaultSockJsServiceTests extends AbstractHttpRequestTests {
 
 	@Test
 	public void defaultTransportHandlersWithOverride() {
-
 		XhrReceivingTransportHandler xhrHandler = new XhrReceivingTransportHandler();
 
-		DefaultSockJsService service = new DefaultSockJsService(mock(TaskScheduler.class), null, xhrHandler);
+		DefaultSockJsService service = new DefaultSockJsService(mock(TaskScheduler.class), xhrHandler);
 		Map<TransportType, TransportHandler> handlers = service.getTransportHandlers();
 
 		assertEquals(8, handlers.size());
@@ -114,21 +110,18 @@ public class DefaultSockJsServiceTests extends AbstractHttpRequestTests {
 
 	@Test
 	public void customizedTransportHandlerList() {
-
-		List<TransportHandler> handlers = Arrays.<TransportHandler>asList(
-				new XhrPollingTransportHandler(), new XhrReceivingTransportHandler());
-
-		DefaultSockJsService service = new DefaultSockJsService(mock(TaskScheduler.class), handlers);
+		TransportHandlingSockJsService service = new TransportHandlingSockJsService(
+				mock(TaskScheduler.class), new XhrPollingTransportHandler(), new XhrReceivingTransportHandler());
 		Map<TransportType, TransportHandler> actualHandlers = service.getTransportHandlers();
 
-		assertEquals(handlers.size(), actualHandlers.size());
+		assertEquals(2, actualHandlers.size());
 	}
 
 	@Test
 	public void handleTransportRequestXhr() throws Exception {
-
-		setRequest("POST", sessionUrlPrefix + "xhr");
-		this.service.handleRequest(this.request, this.response, this.wsHandler);
+		String sockJsPath = sessionUrlPrefix + "xhr";
+		setRequest("POST", sockJsPrefix + sockJsPath);
+		this.service.handleRequest(this.request, this.response, sockJsPath, this.wsHandler);
 
 		assertEquals(200, this.servletResponse.getStatus());
 		verify(this.xhrHandler).handleRequest(this.request, this.response, this.wsHandler, this.session);
@@ -141,9 +134,9 @@ public class DefaultSockJsServiceTests extends AbstractHttpRequestTests {
 
 	@Test
 	public void handleTransportRequestXhrOptions() throws Exception {
-
-		setRequest("OPTIONS", sessionUrlPrefix + "xhr");
-		this.service.handleRequest(this.request, this.response, this.wsHandler);
+		String sockJsPath = sessionUrlPrefix + "xhr";
+		setRequest("OPTIONS", sockJsPrefix + sockJsPath);
+		this.service.handleRequest(this.request, this.response, sockJsPath, this.wsHandler);
 
 		assertEquals(204, this.servletResponse.getStatus());
 		assertEquals("*", this.response.getHeaders().getFirst("Access-Control-Allow-Origin"));
@@ -152,66 +145,34 @@ public class DefaultSockJsServiceTests extends AbstractHttpRequestTests {
 	}
 
 	@Test
-	public void dummySessionCookieEnabled() throws Exception {
-
-		setRequest("POST", sessionUrlPrefix + "xhr");
-		this.service.setDummySessionCookieEnabled(true);
-		this.service.handleRequest(this.request, this.response, this.wsHandler);
-		this.response.flush();
-
-		assertEquals(200, this.servletResponse.getStatus());
-		assertEquals("JSESSIONID=dummy;path=/", this.servletResponse.getHeader("Set-Cookie"));
-	}
-
-	@Test
-	public void dummySessionCookieDisabled() throws Exception {
-
-		setRequest("POST", sessionUrlPrefix + "xhr");
-		this.service.setDummySessionCookieEnabled(false);
-		this.service.handleTransportRequest(this.request, this.response, this.wsHandler, sessionId, "xhr");
-
-		assertEquals(200, this.servletResponse.getStatus());
-		assertNull(this.servletResponse.getHeader("Set-Cookie"));
-	}
-
-	@Test
-	public void dummySessionCookieReuseRequestCookieValue() throws Exception {
-
-		setRequest("POST", sessionUrlPrefix + "xhr");
-		this.servletRequest.addHeader("Cookie", "JSESSIONID=123456789");
-		this.service.handleTransportRequest(this.request, this.response, this.wsHandler, sessionId, "xhr");
-
-		assertEquals(200, this.servletResponse.getStatus());
-		assertNull(this.servletResponse.getHeader("Set-Cookie"));
-	}
-
-	@Test
 	public void handleTransportRequestNoSuitableHandler() throws Exception {
-
-		setRequest("POST", sessionUrlPrefix + "eventsource");
-		this.service.handleRequest(this.request, this.response, this.wsHandler);
+		String sockJsPath = sessionUrlPrefix + "eventsource";
+		setRequest("POST", sockJsPrefix + sockJsPath);
+		this.service.handleRequest(this.request, this.response, sockJsPath, this.wsHandler);
 
 		assertEquals(404, this.servletResponse.getStatus());
 	}
 
 	@Test
 	public void handleTransportRequestXhrSend() throws Exception {
-
-		setRequest("POST", sessionUrlPrefix + "xhr_send");
-		this.service.handleRequest(this.request, this.response, this.wsHandler);
+		String sockJsPath = sessionUrlPrefix + "xhr_send";
+		setRequest("POST", sockJsPrefix + sockJsPath);
+		this.service.handleRequest(this.request, this.response, sockJsPath, this.wsHandler);
 
 		assertEquals(404, this.servletResponse.getStatus()); // no session yet
 
 		resetResponse();
-		setRequest("POST", sessionUrlPrefix + "xhr");
-		this.service.handleRequest(this.request, this.response, this.wsHandler);
+		sockJsPath = sessionUrlPrefix + "xhr";
+		setRequest("POST", sockJsPrefix + sockJsPath);
+		this.service.handleRequest(this.request, this.response, sockJsPath, this.wsHandler);
 
 		assertEquals(200, this.servletResponse.getStatus()); // session created
 		verify(this.xhrHandler).handleRequest(this.request, this.response, this.wsHandler, this.session);
 
 		resetResponse();
-		setRequest("POST", sessionUrlPrefix + "xhr_send");
-		this.service.handleRequest(this.request, this.response, this.wsHandler);
+		sockJsPath = sessionUrlPrefix + "xhr_send";
+		setRequest("POST", sockJsPrefix + sockJsPath);
+		this.service.handleRequest(this.request, this.response, sockJsPath, this.wsHandler);
 
 		assertEquals(200, this.servletResponse.getStatus()); // session exists
 		verify(this.xhrSendHandler).handleRequest(this.request, this.response, this.wsHandler, this.session);

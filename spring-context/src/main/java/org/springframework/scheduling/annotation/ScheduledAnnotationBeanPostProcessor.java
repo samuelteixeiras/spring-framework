@@ -42,6 +42,7 @@ import org.springframework.scheduling.support.ScheduledMethodRunnable;
 import org.springframework.util.Assert;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.util.ReflectionUtils.MethodCallback;
+import org.springframework.util.StringUtils;
 import org.springframework.util.StringValueResolver;
 
 /**
@@ -116,17 +117,8 @@ public class ScheduledAnnotationBeanPostProcessor
 		ReflectionUtils.doWithMethods(targetClass, new MethodCallback() {
 			@Override
 			public void doWith(Method method) throws IllegalArgumentException, IllegalAccessException {
-				Schedules schedules = AnnotationUtils.getAnnotation(method, Schedules.class);
-				if (schedules != null) {
-					for (Scheduled scheduled : schedules.value()) {
-						processScheduled(scheduled, method, bean);
-					}
-				}
-				else {
-					Scheduled scheduled = AnnotationUtils.getAnnotation(method, Scheduled.class);
-					if (scheduled != null) {
-						processScheduled(scheduled, method, bean);
-					}
+				for (Scheduled scheduled : AnnotationUtils.getRepeatableAnnotation(method, Schedules.class, Scheduled.class)) {
+					processScheduled(scheduled, method, bean);
 				}
 			}
 		});
@@ -142,8 +134,8 @@ public class ScheduledAnnotationBeanPostProcessor
 
 			if (AopUtils.isJdkDynamicProxy(bean)) {
 				try {
-					// found a @Scheduled method on the target class for this JDK proxy -> is it
-					// also present on the proxy itself?
+					// Found a @Scheduled method on the target class for this JDK proxy ->
+					// is it also present on the proxy itself?
 					method = bean.getClass().getMethod(method.getName(), method.getParameterTypes());
 				}
 				catch (SecurityException ex) {
@@ -166,7 +158,7 @@ public class ScheduledAnnotationBeanPostProcessor
 			// Determine initial delay
 			long initialDelay = scheduled.initialDelay();
 			String initialDelayString = scheduled.initialDelayString();
-			if (!"".equals(initialDelayString)) {
+			if (StringUtils.hasText(initialDelayString)) {
 				Assert.isTrue(initialDelay < 0, "Specify 'initialDelay' or 'initialDelayString', not both");
 				if (this.embeddedValueResolver != null) {
 					initialDelayString = this.embeddedValueResolver.resolveStringValue(initialDelayString);
@@ -182,7 +174,7 @@ public class ScheduledAnnotationBeanPostProcessor
 
 			// Check cron expression
 			String cron = scheduled.cron();
-			if (!"".equals(cron)) {
+			if (StringUtils.hasText(cron)) {
 				Assert.isTrue(initialDelay == -1, "'initialDelay' not supported for cron triggers");
 				processedSchedule = true;
 				String zone = scheduled.zone();
@@ -191,12 +183,8 @@ public class ScheduledAnnotationBeanPostProcessor
 					zone = this.embeddedValueResolver.resolveStringValue(zone);
 				}
 				TimeZone timeZone;
-				if (!"".equals(zone)) {
-					timeZone = TimeZone.getTimeZone(zone);
-					// Check for that silly TimeZone fallback...
-					if ("GMT".equals(timeZone.getID()) && !zone.startsWith("GMT")) {
-						throw new IllegalArgumentException("Invalid time zone id '" + zone + "'");
-					}
+				if (StringUtils.hasText(zone)) {
+					timeZone = StringUtils.parseTimeZoneString(zone);
 				}
 				else {
 					timeZone = TimeZone.getDefault();
@@ -217,7 +205,7 @@ public class ScheduledAnnotationBeanPostProcessor
 				this.registrar.addFixedDelayTask(new IntervalTask(runnable, fixedDelay, initialDelay));
 			}
 			String fixedDelayString = scheduled.fixedDelayString();
-			if (!"".equals(fixedDelayString)) {
+			if (StringUtils.hasText(fixedDelayString)) {
 				Assert.isTrue(!processedSchedule, errorMessage);
 				processedSchedule = true;
 				if (this.embeddedValueResolver != null) {
@@ -241,7 +229,7 @@ public class ScheduledAnnotationBeanPostProcessor
 				this.registrar.addFixedRateTask(new IntervalTask(runnable, fixedRate, initialDelay));
 			}
 			String fixedRateString = scheduled.fixedRateString();
-			if (!"".equals(fixedRateString)) {
+			if (StringUtils.hasText(fixedRateString)) {
 				Assert.isTrue(!processedSchedule, errorMessage);
 				processedSchedule = true;
 				if (this.embeddedValueResolver != null) {

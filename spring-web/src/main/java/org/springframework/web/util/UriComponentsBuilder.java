@@ -64,7 +64,11 @@ public class UriComponentsBuilder {
 
 	private static final String USERINFO_PATTERN = "([^@/]*)";
 
-	private static final String HOST_PATTERN = "([^/?#:]*)";
+	private static final String HOST_IPV4_PATTERN = "[^\\[/?#:]*";
+
+	private static final String HOST_IPV6_PATTERN = "\\[[\\p{XDigit}\\:\\.]*[%\\p{Alnum}]*\\]";
+
+	private static final String HOST_PATTERN = "(" + HOST_IPV6_PATTERN + "|" + HOST_IPV4_PATTERN + ")";
 
 	private static final String PORT_PATTERN = "(\\d*)";
 
@@ -226,7 +230,11 @@ public class UriComponentsBuilder {
 			String scheme = m.group(1);
 			builder.scheme((scheme != null) ? scheme.toLowerCase() : scheme);
 			builder.userInfo(m.group(4));
-			builder.host(m.group(5));
+			String host = m.group(5);
+			if(StringUtils.hasLength(scheme) && !StringUtils.hasLength(host)) {
+				throw new IllegalArgumentException("[" + httpUrl + "] is not a valid HTTP URL");
+			}
+			builder.host(host);
 			String port = m.group(7);
 			if (StringUtils.hasLength(port)) {
 				builder.port(Integer.parseInt(port));
@@ -351,6 +359,50 @@ public class UriComponentsBuilder {
 	 */
 	public UriComponentsBuilder scheme(String scheme) {
 		this.scheme = scheme;
+		return this;
+	}
+
+	/**
+	 * Set all components of this URI builder from the given {@link UriComponents}.
+	 * @param uriComponents the UriComponents instance
+	 * @return this UriComponentsBuilder
+	 */
+	public UriComponentsBuilder uriComponents(UriComponents uriComponents) {
+		Assert.notNull(uriComponents, "'uriComponents' must not be null");
+		this.scheme = uriComponents.getScheme();
+		if (uriComponents instanceof OpaqueUriComponents) {
+			this.ssp = uriComponents.getSchemeSpecificPart();
+			resetHierarchicalComponents();
+		}
+		else {
+			if (uriComponents.getUserInfo() != null) {
+				this.userInfo = uriComponents.getUserInfo();
+			}
+			if (uriComponents.getHost() != null) {
+				this.host = uriComponents.getHost();
+			}
+			if (uriComponents.getPort() != -1) {
+				this.port = uriComponents.getPort();
+			}
+			if (StringUtils.hasLength(uriComponents.getPath())) {
+				List<String> segments = uriComponents.getPathSegments();
+				if (segments.isEmpty()) {
+					// Perhaps "/"
+					this.pathBuilder.addPath(uriComponents.getPath());
+				}
+				else {
+					this.pathBuilder.addPathSegments(segments.toArray(new String[segments.size()]));
+				}
+			}
+			if (!uriComponents.getQueryParams().isEmpty()) {
+				this.queryParams.clear();
+				this.queryParams.putAll(uriComponents.getQueryParams());
+			}
+			resetSchemeSpecificPart();
+		}
+		if (uriComponents.getFragment() != null) {
+			this.fragment = uriComponents.getFragment();
+		}
 		return this;
 	}
 
@@ -511,6 +563,17 @@ public class UriComponentsBuilder {
 	}
 
 	/**
+	 * Adds the given query parameters.
+	 * @param params the params
+	 * @return this UriComponentsBuilder
+	 */
+	public UriComponentsBuilder queryParams(MultiValueMap<String, String> params) {
+		Assert.notNull(params, "'params' must not be null");
+		this.queryParams.putAll(params);
+		return this;
+	}
+
+	/**
 	 * Sets the query parameter values overriding all existing query values for
 	 * the same parameter. If no values are given, the query parameter is
 	 * removed.
@@ -551,7 +614,6 @@ public class UriComponentsBuilder {
 
 		PathComponent build();
 	}
-
 
 	private static class CompositePathComponentBuilder implements PathComponentBuilder {
 

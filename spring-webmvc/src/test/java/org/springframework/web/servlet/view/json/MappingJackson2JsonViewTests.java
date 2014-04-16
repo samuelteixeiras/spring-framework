@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -97,7 +97,7 @@ public class MappingJackson2JsonViewTests {
 		assertEquals("no-cache, no-store, max-age=0", response.getHeader("Cache-Control"));
 		assertNotNull(response.getHeader("Expires"));
 
-		assertEquals(MappingJacksonJsonView.DEFAULT_CONTENT_TYPE, response.getContentType());
+		assertEquals(MappingJackson2JsonView.DEFAULT_CONTENT_TYPE, response.getContentType());
 
 		String jsonResult = response.getContentAsString();
 		assertTrue(jsonResult.length() > 0);
@@ -247,7 +247,7 @@ public class MappingJackson2JsonViewTests {
 	public void filterSingleKeyModel() throws Exception {
 		view.setExtractValueFromSingleKeyModel(true);
 
-		Map<String, Object> model = new HashMap<String, Object>();
+		Map<String, Object> model = new HashMap<>();
 		TestBeanSimple bean = new TestBeanSimple();
 		model.put("foo", bean);
 
@@ -261,7 +261,7 @@ public class MappingJackson2JsonViewTests {
 	public void filterTwoKeyModel() throws Exception {
 		view.setExtractValueFromSingleKeyModel(true);
 
-		Map<String, Object> model = new HashMap<String, Object>();
+		Map<String, Object> model = new HashMap<>();
 		TestBeanSimple bean1 = new TestBeanSimple();
 		TestBeanSimple bean2 = new TestBeanSimple();
 		model.put("foo1", bean1);
@@ -282,6 +282,7 @@ public class MappingJackson2JsonViewTests {
 	}
 
 
+	@SuppressWarnings("unused")
 	public static class TestBeanSimple {
 
 		private String value = "foo";
@@ -358,6 +359,7 @@ public class MappingJackson2JsonViewTests {
 	}
 
 
+	@SuppressWarnings("serial")
 	public static class DelegatingSerializerFactory extends BeanSerializerFactory {
 
 		protected DelegatingSerializerFactory(SerializerFactoryConfig config) {

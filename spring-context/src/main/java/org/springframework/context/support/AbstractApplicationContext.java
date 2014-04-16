@@ -206,7 +206,7 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	 * Create a new AbstractApplicationContext with no parent.
 	 */
 	public AbstractApplicationContext() {
-		this(null);
+		this.resourcePatternResolver = getResourcePatternResolver();
 	}
 
 	/**
@@ -214,8 +214,8 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	 * @param parent the parent context
 	 */
 	public AbstractApplicationContext(ApplicationContext parent) {
-		this.parent = parent;
-		this.resourcePatternResolver = getResourcePatternResolver();
+		this();
+		setParent(parent);
 	}
 
 
@@ -341,7 +341,7 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	 * @return the internal ApplicationEventMulticaster (never {@code null})
 	 * @throws IllegalStateException if the context has not been initialized yet
 	 */
-	private ApplicationEventMulticaster getApplicationEventMulticaster() throws IllegalStateException {
+	ApplicationEventMulticaster getApplicationEventMulticaster() throws IllegalStateException {
 		if (this.applicationEventMulticaster == null) {
 			throw new IllegalStateException("ApplicationEventMulticaster not initialized - " +
 					"call 'refresh' before multicasting events via the context: " + this);
@@ -354,7 +354,7 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	 * @return the internal LifecycleProcessor (never {@code null})
 	 * @throws IllegalStateException if the context has not been initialized yet
 	 */
-	private LifecycleProcessor getLifecycleProcessor() {
+	LifecycleProcessor getLifecycleProcessor() {
 		if (this.lifecycleProcessor == null) {
 			throw new IllegalStateException("LifecycleProcessor not initialized - " +
 					"call 'refresh' before invoking lifecycle methods via the context: " + this);
@@ -1072,6 +1072,12 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	}
 
 	@Override
+	public String[] getBeanNamesForAnnotation(Class<? extends Annotation> annotationType) {
+		assertBeanFactoryActive();
+		return getBeanFactory().getBeanNamesForAnnotation(annotationType);
+	}
+
+	@Override
 	public Map<String, Object> getBeansWithAnnotation(Class<? extends Annotation> annotationType)
 			throws BeansException {
 
@@ -1080,7 +1086,9 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	}
 
 	@Override
-	public <A extends Annotation> A findAnnotationOnBean(String beanName, Class<A> annotationType) {
+	public <A extends Annotation> A findAnnotationOnBean(String beanName, Class<A> annotationType)
+			throws NoSuchBeanDefinitionException{
+
 		assertBeanFactoryActive();
 		return getBeanFactory().findAnnotationOnBean(beanName, annotationType);
 	}

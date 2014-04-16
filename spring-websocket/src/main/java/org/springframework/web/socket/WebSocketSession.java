@@ -20,19 +20,19 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.security.Principal;
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.http.HttpHeaders;
 
 /**
- * A WebSocket session abstraction. Allows sending messages over a WebSocket connection
- * and closing it.
+ * A WebSocket session abstraction. Allows sending messages over a WebSocket
+ * connection and closing it.
  *
  * @author Rossen Stoyanchev
  * @since 4.0
  */
 public interface WebSocketSession {
-
 
 	/**
 	 * Return a unique session identifier.
@@ -50,11 +50,15 @@ public interface WebSocketSession {
 	HttpHeaders getHandshakeHeaders();
 
 	/**
-	 * Handshake request specific attributes.
-	 * To add attributes to a server-side WebSocket session see
-	 * {@link org.springframework.web.socket.server.HandshakeInterceptor}.
+	 * Return the map with attributes associated with the WebSocket session.
+	 *
+	 * <p>When the WebSocketSession is created, on the server side, the map can be
+	 * through a {@link org.springframework.web.socket.server.HandshakeInterceptor}.
+	 * On the client side, the map can be populated by passing attributes to the
+	 * {@link org.springframework.web.socket.client.WebSocketClient} handshake
+	 * methods.
 	 */
-	Map<String, Object> getHandshakeAttributes();
+	Map<String, Object> getAttributes();
 
 	/**
 	 * Return a {@link java.security.Principal} instance containing the name of the
@@ -78,6 +82,32 @@ public interface WebSocketSession {
 	 * negotiated successfully.
 	 */
 	String getAcceptedProtocol();
+
+	/**
+	 * Configure the maximum size for an incoming text message.
+	 */
+	void setTextMessageSizeLimit(int messageSizeLimit);
+
+	/**
+	 * Get the configured maximum size for an incoming text message.
+	 */
+	int getTextMessageSizeLimit();
+
+	/**
+	 * Configure the maximum size for an incoming binary message.
+	 */
+	void setBinaryMessageSizeLimit(int messageSizeLimit);
+
+	/**
+	 * Get the configured maximum size for an incoming binary message.
+	 */
+	int getBinaryMessageSizeLimit();
+
+	/**
+	 * Return the negotiated extensions or {@code null} if none was specified or
+	 * negotiated successfully.
+	 */
+	List<WebSocketExtension> getExtensions();
 
 	/**
 	 * Return whether the connection is still open.

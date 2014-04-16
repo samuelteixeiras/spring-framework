@@ -100,10 +100,10 @@ public class HttpInvokerClientInterceptor extends RemoteInvocationBasedAccessor
 	 * Set the HttpInvokerRequestExecutor implementation to use for executing
 	 * remote invocations.
 	 * <p>Default is {@link SimpleHttpInvokerRequestExecutor}. Alternatively,
-	 * consider using {@link CommonsHttpInvokerRequestExecutor} for more
+	 * consider using {@link HttpComponentsHttpInvokerRequestExecutor} for more
 	 * sophisticated needs.
 	 * @see SimpleHttpInvokerRequestExecutor
-	 * @see CommonsHttpInvokerRequestExecutor
+	 * @see HttpComponentsHttpInvokerRequestExecutor
 	 */
 	public void setHttpInvokerRequestExecutor(HttpInvokerRequestExecutor httpInvokerRequestExecutor) {
 		this.httpInvokerRequestExecutor = httpInvokerRequestExecutor;
@@ -202,18 +202,18 @@ public class HttpInvokerClientInterceptor extends RemoteInvocationBasedAccessor
 	 */
 	protected RemoteAccessException convertHttpInvokerAccessException(Throwable ex) {
 		if (ex instanceof ConnectException) {
-			throw new RemoteConnectFailureException(
+			return new RemoteConnectFailureException(
 					"Could not connect to HTTP invoker remote service at [" + getServiceUrl() + "]", ex);
 		}
-		else if (ex instanceof ClassNotFoundException || ex instanceof NoClassDefFoundError ||
+
+		if (ex instanceof ClassNotFoundException || ex instanceof NoClassDefFoundError ||
 				ex instanceof InvalidClassException) {
-			throw new RemoteAccessException(
+			return new RemoteAccessException(
 					"Could not deserialize result from HTTP invoker remote service [" + getServiceUrl() + "]", ex);
 		}
-		else {
-			throw new RemoteAccessException(
-				"Could not access HTTP invoker remote service at [" + getServiceUrl() + "]", ex);
-		}
+
+		return new RemoteAccessException(
+					"Could not access HTTP invoker remote service at [" + getServiceUrl() + "]", ex);
 	}
 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,15 +16,11 @@
 
 package org.springframework.context.annotation;
 
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.not;
-import static org.hamcrest.CoreMatchers.notNullValue;
-import static org.hamcrest.CoreMatchers.sameInstance;
-import static org.junit.Assert.assertThat;
-import static org.springframework.beans.factory.support.BeanDefinitionBuilder.genericBeanDefinition;
-
 import java.io.IOException;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.util.HashSet;
 
 import org.junit.Test;
@@ -34,7 +30,8 @@ import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.context.annotation.ComponentScan.Filter;
-import org.springframework.context.annotation.ComponentScanParserTests.CustomAnnotationAutowiredBean;
+import org.springframework.context.annotation.ComponentScanParserTests.KustomAnnotationAutowiredBean;
+import org.springframework.context.annotation.componentscan.simple.SimpleComponent;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.tests.context.SimpleMapScope;
 import org.springframework.util.SerializationTestUtils;
@@ -49,14 +46,21 @@ import example.scannable_implicitbasepackage.ComponentScanAnnotatedConfigWithImp
 import example.scannable_scoped.CustomScopeAnnotationBean;
 import example.scannable_scoped.MyScope;
 
+import static org.hamcrest.CoreMatchers.*;
+import static org.junit.Assert.*;
+import static org.springframework.beans.factory.support.BeanDefinitionBuilder.*;
+
 /**
- * Integration tests for processing ComponentScan-annotated Configuration
- * classes.
+ * Integration tests for processing ComponentScan-annotated Configuration classes.
  *
  * @author Chris Beams
+ * @author Juergen Hoeller
+ * @author Sam Brannen
  * @since 3.1
  */
+@SuppressWarnings("resource")
 public class ComponentScanAnnotationIntegrationTests {
+
 	@Test
 	public void controlScan() {
 		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext();
@@ -105,6 +109,20 @@ public class ComponentScanAnnotationIntegrationTests {
 	}
 
 	@Test
+	public void viaContextRegistration_WithComposedAnnotation() {
+		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext();
+		ctx.register(ComposedAnnotationConfig.class);
+		ctx.refresh();
+		ctx.getBean(ComposedAnnotationConfig.class);
+		ctx.getBean(SimpleComponent.class);
+		assertThat("config class bean not found",
+			ctx.containsBeanDefinition("componentScanAnnotationIntegrationTests.ComposedAnnotationConfig"), is(true));
+		assertThat("@ComponentScan annotated @Configuration class registered directly against "
+				+ "AnnotationConfigApplicationContext did not trigger component scanning as expected",
+			ctx.containsBean("simpleComponent"), is(true));
+	}
+
+	@Test
 	public void viaBeanRegistration() {
 		DefaultListableBeanFactory bf = new DefaultListableBeanFactory();
 		bf.registerBeanDefinition("componentScanAnnotatedConfig",
@@ -141,7 +159,7 @@ public class ComponentScanAnnotationIntegrationTests {
 	@Test
 	public void withCustomTypeFilter() {
 		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(ComponentScanWithCustomTypeFilter.class);
-		CustomAnnotationAutowiredBean testBean = ctx.getBean(CustomAnnotationAutowiredBean.class);
+		KustomAnnotationAutowiredBean testBean = ctx.getBean(KustomAnnotationAutowiredBean.class);
 		assertThat(testBean.getDependency(), notNullValue());
 	}
 
@@ -160,6 +178,30 @@ public class ComponentScanAnnotationIntegrationTests {
 		FooService deserialized = (FooService) SerializationTestUtils.serializeAndDeserialize(bean);
 		assertThat(deserialized, notNullValue());
 		assertThat(deserialized.foo(1), equalTo("bar"));
+	}
+
+	@Test
+	public void withScopedProxyThroughRegex() throws IOException, ClassNotFoundException {
+		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext();
+		ctx.register(ComponentScanWithScopedProxyThroughRegex.class);
+		ctx.getBeanFactory().registerScope("myScope", new SimpleMapScope());
+		ctx.refresh();
+		// should cast to the interface
+		FooService bean = (FooService) ctx.getBean("scopedProxyTestBean");
+		// should be dynamic proxy
+		assertThat(AopUtils.isJdkDynamicProxy(bean), is(true));
+	}
+
+	@Test
+	public void withScopedProxyThroughAspectJPattern() throws IOException, ClassNotFoundException {
+		AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext();
+		ctx.register(ComponentScanWithScopedProxyThroughAspectJPattern.class);
+		ctx.getBeanFactory().registerScope("myScope", new SimpleMapScope());
+		ctx.refresh();
+		// should cast to the interface
+		FooService bean = (FooService) ctx.getBean("scopedProxyTestBean");
+		// should be dynamic proxy
+		assertThat(AopUtils.isJdkDynamicProxy(bean), is(true));
 	}
 
 	@Test
@@ -188,6 +230,19 @@ public class ComponentScanAnnotationIntegrationTests {
 		assertThat(ctx.containsBean("fooServiceImpl"), is(true));
 	}
 
+
+	@Configuration
+	@ComponentScan
+	@Retention(RetentionPolicy.RUNTIME)
+	@Target(ElementType.TYPE)
+	public static @interface ComposedConfiguration {
+		String[] basePackages() default {};
+	}
+
+	@ComposedConfiguration(basePackages = "org.springframework.context.annotation.componentscan.simple")
+	public static class ComposedAnnotationConfig {
+	}
+
 }
 
 
@@ -211,11 +266,11 @@ class ComponentScanAnnotatedConfig_WithValueAttribute {
 
 @Configuration
 @ComponentScan
-class ComponentScanWithNoPackagesConfig { }
+class ComponentScanWithNoPackagesConfig {}
 
 @Configuration
 @ComponentScan(basePackages="example.scannable", nameGenerator=MyBeanNameGenerator.class)
-class ComponentScanWithBeanNameGenenerator { }
+class ComponentScanWithBeanNameGenenerator {}
 
 class MyBeanNameGenerator extends AnnotationBeanNameGenerator {
 	@Override
@@ -226,7 +281,7 @@ class MyBeanNameGenerator extends AnnotationBeanNameGenerator {
 
 @Configuration
 @ComponentScan(basePackages="example.scannable_scoped", scopeResolver=MyScopeMetadataResolver.class)
-class ComponentScanWithScopeResolver { }
+class ComponentScanWithScopeResolver {}
 
 class MyScopeMetadataResolver extends AnnotationScopeMetadataResolver {
 	MyScopeMetadataResolver() {
@@ -249,8 +304,8 @@ class ComponentScanWithCustomTypeFilter {
 		return cac;
 	}
 
-	public ComponentScanParserTests.CustomAnnotationAutowiredBean testBean() {
-		return new ComponentScanParserTests.CustomAnnotationAutowiredBean();
+	public ComponentScanParserTests.KustomAnnotationAutowiredBean testBean() {
+		return new ComponentScanParserTests.KustomAnnotationAutowiredBean();
 	}
 }
 
@@ -259,7 +314,21 @@ class ComponentScanWithCustomTypeFilter {
 		scopedProxy=ScopedProxyMode.INTERFACES,
 		useDefaultFilters=false,
 		includeFilters=@Filter(type=FilterType.ASSIGNABLE_TYPE, value=ScopedProxyTestBean.class))
-class ComponentScanWithScopedProxy { }
+class ComponentScanWithScopedProxy {}
+
+@Configuration
+@ComponentScan(basePackages="example.scannable",
+		scopedProxy=ScopedProxyMode.INTERFACES,
+		useDefaultFilters=false,
+		includeFilters=@Filter(type=FilterType.REGEX, pattern ="((?:[a-z.]+))ScopedProxyTestBean"))
+class ComponentScanWithScopedProxyThroughRegex {}
+
+@Configuration
+@ComponentScan(basePackages="example.scannable",
+		scopedProxy=ScopedProxyMode.INTERFACES,
+		useDefaultFilters=false,
+		includeFilters=@Filter(type=FilterType.ASPECTJ, pattern ="*..ScopedProxyTestBean"))
+class ComponentScanWithScopedProxyThroughAspectJPattern {}
 
 @Configuration
 @ComponentScan(basePackages="example.scannable",
@@ -269,18 +338,18 @@ class ComponentScanWithScopedProxy { }
 			@Filter(CustomComponent.class)
 		}
 	)
-class ComponentScanWithMultipleAnnotationIncludeFilters1 { }
+class ComponentScanWithMultipleAnnotationIncludeFilters1 {}
 
 @Configuration
 @ComponentScan(basePackages="example.scannable",
 		useDefaultFilters=false,
 		includeFilters=@Filter({CustomStereotype.class, CustomComponent.class})
 	)
-class ComponentScanWithMultipleAnnotationIncludeFilters2 { }
+class ComponentScanWithMultipleAnnotationIncludeFilters2 {}
 
 @Configuration
 @ComponentScan(
 		value="example.scannable",
 		basePackages="example.scannable",
 		basePackageClasses=example.scannable._package.class)
-class ComponentScanWithBasePackagesAndValueAlias { }
+class ComponentScanWithBasePackagesAndValueAlias {}

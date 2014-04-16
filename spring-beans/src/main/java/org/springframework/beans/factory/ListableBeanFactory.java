@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2013 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ import org.springframework.beans.BeansException;
  * such manually registered singletons too. Of course, BeanFactory's {@code getBean}
  * does allow transparent access to such special beans as well. However, in typical
  * scenarios, all beans will be defined by external bean definitions anyway, so most
- * applications don't need to worry about this differentation.
+ * applications don't need to worry about this differentiation.
  *
  * <p><b>NOTE:</b> With the exception of {@code getBeanDefinitionCount}
  * and {@code containsBeanDefinition}, the methods in this interface
@@ -212,23 +212,36 @@ public interface ListableBeanFactory extends BeanFactory {
 			throws BeansException;
 
 	/**
-	 * Find all beans whose {@code Class} has the supplied {@link java.lang.annotation.Annotation} type.
+	 * Find all names of beans whose {@code Class} has the supplied {@link Annotation}
+	 * type, without creating any bean instances yet.
+	 * @param annotationType the type of annotation to look for
+	 * @return the names of all matching beans
+	 * @since 4.0
+	 */
+	String[] getBeanNamesForAnnotation(Class<? extends Annotation> annotationType);
+
+	/**
+	 * Find all beans whose {@code Class} has the supplied {@link Annotation} type,
+	 * returning a Map of bean names with corresponding bean instances.
 	 * @param annotationType the type of annotation to look for
 	 * @return a Map with the matching beans, containing the bean names as
 	 * keys and the corresponding bean instances as values
 	 * @throws BeansException if a bean could not be created
+	 * @since 3.0
 	 */
-	Map<String, Object> getBeansWithAnnotation(Class<? extends Annotation> annotationType)
-			throws BeansException;
+	Map<String, Object> getBeansWithAnnotation(Class<? extends Annotation> annotationType) throws BeansException;
 
 	/**
-	 * Find a {@link Annotation} of {@code annotationType} on the specified
+	 * Find an {@link Annotation} of {@code annotationType} on the specified
 	 * bean, traversing its interfaces and super classes if no annotation can be
 	 * found on the given class itself.
 	 * @param beanName the name of the bean to look for annotations on
 	 * @param annotationType the annotation class to look for
-	 * @return the annotation of the given type found, or {@code null}
+	 * @return the annotation of the given type if found, or {@code null}
+	 * @throws NoSuchBeanDefinitionException if there is no bean with the given name
+	 * @since 3.0
 	 */
-	<A extends Annotation> A findAnnotationOnBean(String beanName, Class<A> annotationType);
+	<A extends Annotation> A findAnnotationOnBean(String beanName, Class<A> annotationType)
+			throws NoSuchBeanDefinitionException;
 
 }

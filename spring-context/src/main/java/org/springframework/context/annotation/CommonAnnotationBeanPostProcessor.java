@@ -174,8 +174,8 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 
 	private transient BeanFactory beanFactory;
 
-	private transient final Map<Class<?>, InjectionMetadata> injectionMetadataCache =
-			new ConcurrentHashMap<Class<?>, InjectionMetadata>(64);
+	private transient final Map<String, InjectionMetadata> injectionMetadataCache =
+			new ConcurrentHashMap<String, InjectionMetadata>(64);
 
 
 	/**
@@ -280,7 +280,7 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 	public void postProcessMergedBeanDefinition(RootBeanDefinition beanDefinition, Class<?> beanType, String beanName) {
 		super.postProcessMergedBeanDefinition(beanDefinition, beanType, beanName);
 		if (beanType != null) {
-			InjectionMetadata metadata = findResourceMetadata(beanType);
+			InjectionMetadata metadata = findResourceMetadata(beanName, beanType);
 			metadata.checkConfigMembers(beanDefinition);
 		}
 	}
@@ -299,7 +299,7 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 	public PropertyValues postProcessPropertyValues(
 			PropertyValues pvs, PropertyDescriptor[] pds, Object bean, String beanName) throws BeansException {
 
-		InjectionMetadata metadata = findResourceMetadata(bean.getClass());
+		InjectionMetadata metadata = findResourceMetadata(beanName, bean.getClass());
 		try {
 			metadata.inject(bean, beanName, pvs);
 		}
@@ -310,13 +310,15 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 	}
 
 
-	private InjectionMetadata findResourceMetadata(final Class<?> clazz) {
+	private InjectionMetadata findResourceMetadata(String beanName, final Class<?> clazz) {
 		// Quick check on the concurrent map first, with minimal locking.
-		InjectionMetadata metadata = this.injectionMetadataCache.get(clazz);
-		if (metadata == null) {
+		// Fall back to class name as cache key, for backwards compatibility with custom callers.
+		String cacheKey = (StringUtils.hasLength(beanName) ? beanName : clazz.getName());
+		InjectionMetadata metadata = this.injectionMetadataCache.get(cacheKey);
+		if (InjectionMetadata.needsRefresh(metadata, clazz)) {
 			synchronized (this.injectionMetadataCache) {
-				metadata = this.injectionMetadataCache.get(clazz);
-				if (metadata == null) {
+				metadata = this.injectionMetadataCache.get(cacheKey);
+				if (InjectionMetadata.needsRefresh(metadata, clazz)) {
 					LinkedList<InjectionMetadata.InjectedElement> elements = new LinkedList<InjectionMetadata.InjectedElement>();
 					Class<?> targetClass = clazz;
 
@@ -389,7 +391,7 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 					while (targetClass != null && targetClass != Object.class);
 
 					metadata = new InjectionMetadata(clazz, elements);
-					this.injectionMetadataCache.put(clazz, metadata);
+					this.injectionMetadataCache.put(cacheKey, metadata);
 				}
 			}
 		}
@@ -473,10 +475,7 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 
 		public LookupElement(Member member, PropertyDescriptor pd) {
 			super(member, pd);
-			initAnnotation((AnnotatedElement) member);
 		}
-
-		protected abstract void initAnnotation(AnnotatedElement ae);
 
 		/**
 		 * Return the resource name for the lookup.
@@ -512,14 +511,9 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 	 */
 	private class ResourceElement extends LookupElement {
 
-		protected boolean shareable = true;
-
 		public ResourceElement(Member member, PropertyDescriptor pd) {
 			super(member, pd);
-		}
-
-		@Override
-		protected void initAnnotation(AnnotatedElement ae) {
+			AnnotatedElement ae = (AnnotatedElement) member;
 			Resource resource = ae.getAnnotation(Resource.class);
 			String resourceName = resource.name();
 			Class<?> resourceType = resource.type();
@@ -543,7 +537,6 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 			this.name = resourceName;
 			this.lookupType = resourceType;
 			this.mappedName = resource.mappedName();
-			this.shareable = resource.shareable();
 		}
 
 		@Override
@@ -559,16 +552,13 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 	 */
 	private class WebServiceRefElement extends LookupElement {
 
-		private Class<?> elementType;
+		private final Class<?> elementType;
 
-		private String wsdlLocation;
+		private final String wsdlLocation;
 
 		public WebServiceRefElement(Member member, PropertyDescriptor pd) {
 			super(member, pd);
-		}
-
-		@Override
-		protected void initAnnotation(AnnotatedElement ae) {
+			AnnotatedElement ae = (AnnotatedElement) member;
 			WebServiceRef resource = ae.getAnnotation(WebServiceRef.class);
 			String resourceName = resource.name();
 			Class<?> resourceType = resource.type();
@@ -614,7 +604,7 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 				}
 				if (StringUtils.hasLength(this.wsdlLocation)) {
 					try {
-						Constructor<?> ctor = this.lookupType.getConstructor(new Class[] {URL.class, QName.class});
+						Constructor<?> ctor = this.lookupType.getConstructor(new Class<?>[] {URL.class, QName.class});
 						WebServiceClient clientAnn = this.lookupType.getAnnotation(WebServiceClient.class);
 						if (clientAnn == null) {
 							throw new IllegalStateException("JAX-WS Service class [" + this.lookupType.getName() +
@@ -648,14 +638,11 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 	 */
 	private class EjbRefElement extends LookupElement {
 
-		private String beanName;
+		private final String beanName;
 
 		public EjbRefElement(Member member, PropertyDescriptor pd) {
 			super(member, pd);
-		}
-
-		@Override
-		protected void initAnnotation(AnnotatedElement ae) {
+			AnnotatedElement ae = (AnnotatedElement) member;
 			EJB resource = ae.getAnnotation(EJB.class);
 			String resourceBeanName = resource.beanName();
 			String resourceName = resource.name();

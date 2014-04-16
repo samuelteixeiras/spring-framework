@@ -30,6 +30,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+
 import javax.activation.FileTypeMap;
 import javax.servlet.Filter;
 import javax.servlet.FilterRegistration;
@@ -44,7 +45,6 @@ import javax.servlet.descriptor.JspConfigDescriptor;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
@@ -56,7 +56,9 @@ import org.springframework.web.util.WebUtils;
 /**
  * Mock implementation of the {@link javax.servlet.ServletContext} interface.
  *
- * <p>Compatible with Servlet 3.0. Can be configured to expose a specific version
+ * <p>As of Spring 4.0, this set of mocks is designed on a Servlet 3.0 baseline.
+ *
+ * <p>Compatible with Servlet 3.0 but can be configured to expose a specific version
  * through {@link #setMajorVersion}/{@link #setMinorVersion}; default is 3.0.
  * Note that Servlet 3.0 support is limited: servlet, filter and listener
  * registration methods are not supported; neither is JSP configuration.
@@ -180,7 +182,7 @@ public class MockServletContext implements ServletContext {
 	 * Create a new MockServletContext using the supplied resource base path and
 	 * resource loader.
 	 * <p>Registers a {@link MockRequestDispatcher} for the Servlet named
-	 * {@value #COMMON_DEFAULT_SERVLET_NAME}.
+	 * {@literal 'default'}.
 	 * @param resourceBasePath the root directory of the WAR (should not end with a slash)
 	 * @param resourceLoader the ResourceLoader to use (or null for the default)
 	 * @see #registerNamedDispatcher
@@ -381,7 +383,7 @@ public class MockServletContext implements ServletContext {
 
 	/**
 	 * Get the name of the <em>default</em> {@code Servlet}.
-	 * <p>Defaults to {@value #COMMON_DEFAULT_SERVLET_NAME}.
+	 * <p>Defaults to {@literal 'default'}.
 	 * @see #setDefaultServletName
 	 */
 	public String getDefaultServletName() {
@@ -406,16 +408,19 @@ public class MockServletContext implements ServletContext {
 	}
 
 	@Override
+	@Deprecated
 	public Servlet getServlet(String name) {
 		return null;
 	}
 
 	@Override
+	@Deprecated
 	public Enumeration<Servlet> getServlets() {
 		return Collections.enumeration(new HashSet<Servlet>());
 	}
 
 	@Override
+	@Deprecated
 	public Enumeration<String> getServletNames() {
 		return Collections.enumeration(new HashSet<String>());
 	}
@@ -426,6 +431,7 @@ public class MockServletContext implements ServletContext {
 	}
 
 	@Override
+	@Deprecated
 	public void log(Exception ex, String message) {
 		logger.info(message, ex);
 	}

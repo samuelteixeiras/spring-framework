@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 
+import org.springframework.http.HttpMethod;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
@@ -46,6 +47,8 @@ public class ServletWebRequest extends ServletRequestAttributes implements Nativ
 	private static final String HEADER_LAST_MODIFIED = "Last-Modified";
 
 	private static final String METHOD_GET = "GET";
+
+	private static final String METHOD_HEAD = "HEAD";
 
 
 	private HttpServletResponse response;
@@ -173,7 +176,7 @@ public class ServletWebRequest extends ServletRequestAttributes implements Nativ
 			long ifModifiedSince = getRequest().getDateHeader(HEADER_IF_MODIFIED_SINCE);
 			this.notModified = (ifModifiedSince >= (lastModifiedTimestamp / 1000 * 1000));
 			if (this.response != null) {
-				if (this.notModified && METHOD_GET.equals(getRequest().getMethod())) {
+				if (this.notModified && supportsNotModifiedStatus()) {
 					this.response.setStatus(HttpServletResponse.SC_NOT_MODIFIED);
 				}
 				else {
@@ -191,7 +194,7 @@ public class ServletWebRequest extends ServletRequestAttributes implements Nativ
 			String ifNoneMatch = getRequest().getHeader(HEADER_IF_NONE_MATCH);
 			this.notModified = eTag.equals(ifNoneMatch);
 			if (this.response != null) {
-				if (this.notModified && METHOD_GET.equals(getRequest().getMethod())) {
+				if (this.notModified && supportsNotModifiedStatus()) {
 					this.response.setStatus(HttpServletResponse.SC_NOT_MODIFIED);
 				}
 				else {
@@ -200,7 +203,11 @@ public class ServletWebRequest extends ServletRequestAttributes implements Nativ
 			}
 		}
 		return this.notModified;
+	}
 
+	private boolean supportsNotModifiedStatus() {
+		String method = getRequest().getMethod();
+		return (METHOD_GET.equals(method) || METHOD_HEAD.equals(method));
 	}
 
 	public boolean isNotModified() {
@@ -227,6 +234,14 @@ public class ServletWebRequest extends ServletRequestAttributes implements Nativ
 			}
 		}
 		return sb.toString();
+	}
+
+	/**
+	 * Return the HTTP method of the request.
+	 * @since 4.0.2
+	 */
+	public HttpMethod getHttpMethod() {
+		return HttpMethod.valueOf(getRequest().getMethod().trim().toUpperCase());
 	}
 
 

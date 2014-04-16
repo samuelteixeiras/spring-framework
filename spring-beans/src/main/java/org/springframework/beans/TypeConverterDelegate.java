@@ -187,6 +187,9 @@ class TypeConverterDelegate {
 			// Try to apply some standard type conversion rules if appropriate.
 
 			if (convertedValue != null) {
+				if (Object.class.equals(requiredType)) {
+					return (T) convertedValue;
+				}
 				if (requiredType.isArray()) {
 					// Array required -> apply appropriate conversion of elements.
 					if (convertedValue instanceof String && Enum.class.isAssignableFrom(requiredType.getComponentType())) {
@@ -197,13 +200,13 @@ class TypeConverterDelegate {
 				else if (convertedValue instanceof Collection) {
 					// Convert elements to target type, if determined.
 					convertedValue = convertToTypedCollection(
-							(Collection) convertedValue, propertyName, requiredType, typeDescriptor);
+							(Collection<?>) convertedValue, propertyName, requiredType, typeDescriptor);
 					standardConversion = true;
 				}
 				else if (convertedValue instanceof Map) {
 					// Convert keys and values to respective target type, if determined.
 					convertedValue = convertToTypedMap(
-							(Map) convertedValue, propertyName, requiredType, typeDescriptor);
+							(Map<?, ?>) convertedValue, propertyName, requiredType, typeDescriptor);
 					standardConversion = true;
 				}
 				if (convertedValue.getClass().isArray() && Array.getLength(convertedValue) == 1) {
@@ -217,8 +220,8 @@ class TypeConverterDelegate {
 				else if (convertedValue instanceof String && !requiredType.isInstance(convertedValue)) {
 					if (firstAttemptEx == null && !requiredType.isInterface() && !requiredType.isEnum()) {
 						try {
-							Constructor strCtor = requiredType.getConstructor(String.class);
-							return (T) BeanUtils.instantiateClass(strCtor, convertedValue);
+							Constructor<T> strCtor = requiredType.getConstructor(String.class);
+							return BeanUtils.instantiateClass(strCtor, convertedValue);
 						}
 						catch (NoSuchMethodException ex) {
 							// proceed with field lookup
@@ -328,7 +331,7 @@ class TypeConverterDelegate {
 	 * @param requiredType the type to find an editor for
 	 * @return the corresponding editor, or {@code null} if none
 	 */
-	private PropertyEditor findDefaultEditor(Class requiredType) {
+	private PropertyEditor findDefaultEditor(Class<?> requiredType) {
 		PropertyEditor editor = null;
 		if (requiredType != null) {
 			// No custom editor -> check BeanWrapperImpl's default editors.
@@ -431,10 +434,10 @@ class TypeConverterDelegate {
 	private Object convertToTypedArray(Object input, String propertyName, Class<?> componentType) {
 		if (input instanceof Collection) {
 			// Convert Collection elements to array elements.
-			Collection coll = (Collection) input;
+			Collection<?> coll = (Collection<?>) input;
 			Object result = Array.newInstance(componentType, coll.size());
 			int i = 0;
-			for (Iterator it = coll.iterator(); it.hasNext(); i++) {
+			for (Iterator<?> it = coll.iterator(); it.hasNext(); i++) {
 				Object value = convertIfNecessary(
 						buildIndexedPropertyName(propertyName, i), null, it.next(), componentType);
 				Array.set(result, i, value);
@@ -467,8 +470,8 @@ class TypeConverterDelegate {
 	}
 
 	@SuppressWarnings("unchecked")
-	private Collection convertToTypedCollection(
-			Collection original, String propertyName, Class requiredType, TypeDescriptor typeDescriptor) {
+	private Collection<?> convertToTypedCollection(
+			Collection<?> original, String propertyName, Class<?> requiredType, TypeDescriptor typeDescriptor) {
 
 		if (!Collection.class.isAssignableFrom(requiredType)) {
 			return original;
@@ -491,7 +494,7 @@ class TypeConverterDelegate {
 			return original;
 		}
 
-		Iterator it;
+		Iterator<?> it;
 		try {
 			it = original.iterator();
 			if (it == null) {
@@ -510,13 +513,13 @@ class TypeConverterDelegate {
 			return original;
 		}
 
-		Collection convertedCopy;
+		Collection<Object> convertedCopy;
 		try {
 			if (approximable) {
 				convertedCopy = CollectionFactory.createApproximateCollection(original, original.size());
 			}
 			else {
-				convertedCopy = (Collection) requiredType.newInstance();
+				convertedCopy = (Collection<Object>) requiredType.newInstance();
 			}
 		}
 		catch (Throwable ex) {
@@ -549,8 +552,8 @@ class TypeConverterDelegate {
 	}
 
 	@SuppressWarnings("unchecked")
-	private Map convertToTypedMap(
-			Map original, String propertyName, Class requiredType, TypeDescriptor typeDescriptor) {
+	private Map<?, ?> convertToTypedMap(
+			Map<?, ?> original, String propertyName, Class<?> requiredType, TypeDescriptor typeDescriptor) {
 
 		if (!Map.class.isAssignableFrom(requiredType)) {
 			return original;
@@ -574,7 +577,7 @@ class TypeConverterDelegate {
 			return original;
 		}
 
-		Iterator it;
+		Iterator<?> it;
 		try {
 			it = original.entrySet().iterator();
 			if (it == null) {
@@ -593,13 +596,13 @@ class TypeConverterDelegate {
 			return original;
 		}
 
-		Map convertedCopy;
+		Map<Object, Object> convertedCopy;
 		try {
 			if (approximable) {
 				convertedCopy = CollectionFactory.createApproximateMap(original, original.size());
 			}
 			else {
-				convertedCopy = (Map) requiredType.newInstance();
+				convertedCopy = (Map<Object, Object>) requiredType.newInstance();
 			}
 		}
 		catch (Throwable ex) {
@@ -611,7 +614,7 @@ class TypeConverterDelegate {
 		}
 
 		while (it.hasNext()) {
-			Map.Entry entry = (Map.Entry) it.next();
+			Map.Entry<?, ?> entry = (Map.Entry<?, ?>) it.next();
 			Object key = entry.getKey();
 			Object value = entry.getValue();
 			String keyedPropertyName = buildKeyedPropertyName(propertyName, key);
@@ -646,7 +649,7 @@ class TypeConverterDelegate {
 				null);
 	}
 
-	private boolean canCreateCopy(Class requiredType) {
+	private boolean canCreateCopy(Class<?> requiredType) {
 		return (!requiredType.isInterface() && !Modifier.isAbstract(requiredType.getModifiers()) &&
 				Modifier.isPublic(requiredType.getModifiers()) && ClassUtils.hasConstructor(requiredType));
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import javax.sql.DataSource;
 
 import org.hibernate.Interceptor;
 import org.hibernate.SessionFactory;
+import org.hibernate.cache.spi.RegionFactory;
 import org.hibernate.cfg.Configuration;
 import org.hibernate.cfg.NamingStrategy;
 
@@ -43,11 +44,15 @@ import org.springframework.core.io.support.ResourcePatternUtils;
  * Hibernate SessionFactory in a Spring application context; the SessionFactory can
  * then be passed to Hibernate-based data access objects via dependency injection.
  *
- * <p><b>NOTE:</b> This variant of LocalSessionFactoryBean requires Hibernate 4.0 or higher.
+ * <p><b>This variant of LocalSessionFactoryBean requires Hibernate 4.0 or higher.</b>
  * As of Spring 4.0, it is compatible with (the quite refactored) Hibernate 4.3 as well.
- * It is similar in role to the same-named class in the {@code orm.hibernate3} package.
- * However, in practice, it is closer to {@code AnnotationSessionFactoryBean} since
- * its core purpose is to bootstrap a {@code SessionFactory} from annotation scanning.
+ * We recommend using the latest Hibernate 4.2.x or 4.3.x version, depending on whether
+ * you need to remain JPA 2.0 compatible at runtime (Hibernate 4.2) or can upgrade to
+ * JPA 2.1 (Hibernate 4.3).
+ *
+ * <p>This class is similar in role to the same-named class in the {@code orm.hibernate3}
+ * package. However, in practice, it is closer to {@code AnnotationSessionFactoryBean}
+ * since its core purpose is to bootstrap a {@code SessionFactory} from package scanning.
  *
  * <p><b>NOTE:</b> To set up Hibernate 4 for Spring-driven JTA transactions, make
  * sure to either specify the {@link #setJtaTransactionManager "jtaTransactionManager"}
@@ -87,6 +92,8 @@ public class LocalSessionFactoryBean extends HibernateExceptionTranslator
 	private Object multiTenantConnectionProvider;
 
 	private Object currentTenantIdentifierResolver;
+
+	private RegionFactory cacheRegionFactory;
 
 	private Properties hibernateProperties;
 
@@ -247,6 +254,18 @@ public class LocalSessionFactoryBean extends HibernateExceptionTranslator
 	}
 
 	/**
+	 * Set the Hibernate RegionFactory to use for the SessionFactory.
+	 * Allows for using a Spring-managed RegionFactory instance.
+	 * <p>Note: If this is set, the Hibernate settings should not define a
+	 * cache provider to avoid meaningless double configuration.
+	 * @see org.hibernate.cache.spi.RegionFactory
+	 * @see LocalSessionFactoryBuilder#setCacheRegionFactory
+	 */
+	public void setCacheRegionFactory(RegionFactory cacheRegionFactory) {
+		this.cacheRegionFactory = cacheRegionFactory;
+	}
+
+	/**
 	 * Set Hibernate properties, such as "hibernate.dialect".
 	 * <p>Note: Do not specify a transaction provider here when using
 	 * Spring-driven transactions. It is also advisable to omit connection
@@ -370,6 +389,10 @@ public class LocalSessionFactoryBean extends HibernateExceptionTranslator
 
 		if (this.currentTenantIdentifierResolver != null) {
 			sfb.setCurrentTenantIdentifierResolver(this.currentTenantIdentifierResolver);
+		}
+
+		if (this.cacheRegionFactory != null) {
+			sfb.setCacheRegionFactory(this.cacheRegionFactory);
 		}
 
 		if (this.hibernateProperties != null) {

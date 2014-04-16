@@ -18,10 +18,10 @@ package org.springframework.web.socket.client;
 
 import java.net.URI;
 
-import org.springframework.http.HttpHeaders;
 import org.springframework.util.concurrent.ListenableFuture;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.WebSocketHttpHeaders;
 
 /**
  * Contract for initiating a WebSocket request. As an alternative considering using the
@@ -30,7 +30,6 @@ import org.springframework.web.socket.WebSocketSession;
  *
  * @author Rossen Stoyanchev
  * @since 4.0
- *
  * @see WebSocketConnectionManager
  */
 public interface WebSocketClient {
@@ -38,6 +37,7 @@ public interface WebSocketClient {
 	ListenableFuture<WebSocketSession> doHandshake(WebSocketHandler webSocketHandler,
 			String uriTemplate, Object... uriVariables);
 
-	ListenableFuture<WebSocketSession> doHandshake(WebSocketHandler webSocketHandler, HttpHeaders headers, URI uri);
+	ListenableFuture<WebSocketSession> doHandshake(WebSocketHandler webSocketHandler,
+			WebSocketHttpHeaders headers, URI uri);
 
 }

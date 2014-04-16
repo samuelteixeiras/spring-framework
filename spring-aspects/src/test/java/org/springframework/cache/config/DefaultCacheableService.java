@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -92,6 +92,12 @@ public class DefaultCacheableService implements CacheableService<Long> {
 	}
 
 	@Override
+	@Cacheable(value = "default")
+	public Long varArgsKey(Object... args) {
+		return counter.getAndIncrement();
+	}
+
+	@Override
 	@Cacheable(value = "default", key = "#root.methodName")
 	public Long name(Object arg1) {
 		return counter.getAndIncrement();
@@ -100,6 +106,30 @@ public class DefaultCacheableService implements CacheableService<Long> {
 	@Override
 	@Cacheable(value = "default", key = "#root.methodName + #root.method.name + #root.targetClass + #root.target")
 	public Long rootVars(Object arg1) {
+		return counter.getAndIncrement();
+	}
+
+	@Override
+	@Cacheable(value = "default", keyGenerator = "customKeyGenerator")
+	public Long customKeyGenerator(Object arg1) {
+		return counter.getAndIncrement();
+	}
+
+	@Override
+	@Cacheable(value = "default", keyGenerator = "unknownBeanName")
+	public Long unknownCustomKeyGenerator(Object arg1) {
+		return counter.getAndIncrement();
+	}
+
+	@Override
+	@Cacheable(value = "default", cacheManager = "customCacheManager")
+	public Long customCacheManager(Object arg1) {
+		return counter.getAndIncrement();
+	}
+
+	@Override
+	@Cacheable(value = "default", cacheManager = "unknownBeanName")
+	public Long unknownCustomCacheManager(Object arg1) {
 		return counter.getAndIncrement();
 	}
 
@@ -178,4 +208,5 @@ public class DefaultCacheableService implements CacheableService<Long> {
 		arg1.setId(Long.MIN_VALUE);
 		return arg1;
 	}
+
 }

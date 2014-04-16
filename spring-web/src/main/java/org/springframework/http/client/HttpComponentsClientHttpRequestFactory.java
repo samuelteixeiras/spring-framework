@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,23 +48,27 @@ import org.springframework.util.Assert;
  * <p>Allows to use a pre-configured {@link HttpClient} instance -
  * potentially with authentication, HTTP connection pooling, etc.
  *
+ * <p><b>NOTE:</b> Requires Apache HttpComponents 4.3 or higher, as of Spring 4.0.
+ *
  * @author Oleg Kalnichevski
  * @author Arjen Poutsma
+ * @author Stephane Nicoll
  * @since 3.1
  */
-public class HttpComponentsClientHttpRequestFactory
-		implements ClientHttpRequestFactory, DisposableBean {
+public class HttpComponentsClientHttpRequestFactory implements ClientHttpRequestFactory, DisposableBean {
+
+	private CloseableHttpClient httpClient;
 
 	private int connectTimeout;
+
     private int socketTimeout;
-    private CloseableHttpClient httpClient;
 
 	private boolean bufferRequestBody = true;
 
 
 	/**
-	 * Create a new instance of the {@code HttpComponentsClientHttpRequestFactory} with
-	 * a default {@link HttpClient}.
+	 * Create a new instance of the {@code HttpComponentsClientHttpRequestFactory}
+	 * with a default {@link HttpClient}.
 	 */
 	public HttpComponentsClientHttpRequestFactory() {
 		this(HttpClients.createSystem());
@@ -73,26 +77,32 @@ public class HttpComponentsClientHttpRequestFactory
 	/**
 	 * Create a new instance of the {@code HttpComponentsClientHttpRequestFactory}
 	 * with the given {@link HttpClient} instance.
+	 * <p>As of Spring Framework 4.0, the given client is expected to be of type
+	 * {@link CloseableHttpClient} (requiring HttpClient 4.3+).
 	 * @param httpClient the HttpClient instance to use for this request factory
 	 */
-	public HttpComponentsClientHttpRequestFactory(CloseableHttpClient httpClient) {
+	public HttpComponentsClientHttpRequestFactory(HttpClient httpClient) {
 		Assert.notNull(httpClient, "'httpClient' must not be null");
-        this.httpClient = httpClient;
+		Assert.isInstanceOf(CloseableHttpClient.class, httpClient, "'httpClient' is not of type CloseableHttpClient");
+        this.httpClient = (CloseableHttpClient) httpClient;
 	}
+
 
     /**
      * Set the {@code HttpClient} used for
-     * {@linkplain #createRequest(URI, HttpMethod) synchronous execution}.
+	 * <p>As of Spring Framework 4.0, the given client is expected to be of type
+	 * {@link CloseableHttpClient} (requiring HttpClient 4.3+).
      */
-    public void setHttpClient(CloseableHttpClient httpClient) {
-        this.httpClient = httpClient;
+    public void setHttpClient(HttpClient httpClient) {
+		Assert.isInstanceOf(CloseableHttpClient.class, httpClient, "'httpClient' is not of type CloseableHttpClient");
+        this.httpClient = (CloseableHttpClient) httpClient;
     }
 
     /**
 	 * Return the {@code HttpClient} used for
 	 * {@linkplain #createRequest(URI, HttpMethod) synchronous execution}.
 	 */
-	public CloseableHttpClient getHttpClient() {
+	public HttpClient getHttpClient() {
 		return this.httpClient;
 	}
 
@@ -104,6 +114,29 @@ public class HttpComponentsClientHttpRequestFactory
 	public void setConnectTimeout(int timeout) {
 		Assert.isTrue(timeout >= 0, "Timeout must be a non-negative value");
         this.connectTimeout = timeout;
+		setLegacyConnectionTimeout(getHttpClient(), timeout);
+	}
+
+	/**
+	 * Apply the specified connection timeout to deprecated {@link HttpClient}
+	 * implementations.
+	 * <p>As of HttpClient 4.3, default parameters have to be exposed through a
+	 * {@link RequestConfig} instance instead of setting the parameters on the
+	 * client. Unfortunately, this behavior is not backward-compatible and older
+	 * {@link HttpClient} implementations will ignore the {@link RequestConfig}
+	 * object set in the context.
+	 * <p>If the specified client is an older implementation, we set the custom
+	 * connection timeout through the deprecated API. Otherwise, we just return
+	 * as it is set through {@link RequestConfig} with newer clients.
+	 * @param client the client to configure
+	 * @param timeout the custom connection timeout
+	 */
+	@SuppressWarnings("deprecation")
+	private void setLegacyConnectionTimeout(HttpClient client, int timeout) {
+		if (org.apache.http.impl.client.AbstractHttpClient.class.isInstance(client)) {
+			client.getParams().setIntParameter(
+					org.apache.http.params.CoreConnectionPNames.CONNECTION_TIMEOUT, timeout);
+		}
 	}
 
 	/**
@@ -113,12 +146,27 @@ public class HttpComponentsClientHttpRequestFactory
 	 */
 	public void setReadTimeout(int timeout) {
 		Assert.isTrue(timeout >= 0, "Timeout must be a non-negative value");
-        this.socketTimeout= timeout;
+        this.socketTimeout = timeout;
+		setLegacySocketTimeout(getHttpClient(), timeout);
+	}
+
+	/**
+	 * Apply the specified socket timeout to deprecated {@link HttpClient}
+	 * implementations. See {@link #setLegacyConnectionTimeout}.
+	 * @param client the client to configure
+	 * @param timeout the custom socket timeout
+	 * @see #setLegacyConnectionTimeout
+	 */
+	@SuppressWarnings("deprecation")
+	private void setLegacySocketTimeout(HttpClient client, int timeout) {
+		if (org.apache.http.impl.client.AbstractHttpClient.class.isInstance(client)) {
+			client.getParams().setIntParameter(
+					org.apache.http.params.CoreConnectionPNames.SO_TIMEOUT, timeout);
+		}
 	}
 
 	/**
 	 * Indicates whether this request factory should buffer the request body internally.
-	 *
 	 * <p>Default is {@code true}. When sending large amounts of data via POST or PUT, it is
 	 * recommended to change this property to {@code false}, so as not to run out of memory.
 	 */
@@ -126,20 +174,11 @@ public class HttpComponentsClientHttpRequestFactory
 		this.bufferRequestBody = bufferRequestBody;
 	}
 
-	/**
-	 * Indicates whether this request factory should buffer the request body internally.
-	 */
-	public boolean isBufferRequestBody() {
-		return bufferRequestBody;
-	}
-
-
 
 	@Override
 	public ClientHttpRequest createRequest(URI uri, HttpMethod httpMethod) throws IOException {
-		CloseableHttpClient client = getHttpClient();
-		Assert.state(client != null,
-				"Synchronous execution requires an HttpClient to be set");
+		CloseableHttpClient client = (CloseableHttpClient) getHttpClient();
+		Assert.state(client != null, "Synchronous execution requires an HttpClient to be set");
 		HttpUriRequest httpRequest = createHttpUriRequest(httpMethod, uri);
 		postProcessHttpRequest(httpRequest);
         HttpContext context = createHttpContext(httpMethod, uri);
@@ -159,13 +198,14 @@ public class HttpComponentsClientHttpRequestFactory
                             .setConnectTimeout(this.connectTimeout)
                             .setSocketTimeout(this.socketTimeout)
                             .build();
-                } else {
+                }
+				else {
                     config = RequestConfig.DEFAULT;
                 }
             }
             context.setAttribute(HttpClientContext.REQUEST_CONFIG, config);
         }
-		if (bufferRequestBody) {
+		if (this.bufferRequestBody) {
 			return new HttpComponentsClientHttpRequest(client, httpRequest, context);
 		}
 		else {
@@ -222,6 +262,7 @@ public class HttpComponentsClientHttpRequestFactory
 		return null;
 	}
 
+
 	/**
 	 * Shutdown hook that closes the underlying
 	 * {@link org.apache.http.conn.HttpClientConnectionManager ClientConnectionManager}'s
@@ -229,7 +270,7 @@ public class HttpComponentsClientHttpRequestFactory
 	 */
 	@Override
 	public void destroy() throws Exception {
-        httpClient.close();
+        this.httpClient.close();
     }
 
 }

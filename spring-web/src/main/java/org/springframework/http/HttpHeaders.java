@@ -1,5 +1,5 @@
 /*
-	 * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,7 +36,6 @@ import java.util.Set;
 import java.util.TimeZone;
 
 import org.springframework.util.Assert;
-import org.springframework.util.CollectionUtils;
 import org.springframework.util.LinkedCaseInsensitiveMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringUtils;
@@ -92,19 +91,9 @@ public class HttpHeaders implements MultiValueMap<String, String>, Serializable 
 
 	private static final String ORIGIN = "Origin";
 
-	private static final String SEC_WEBSOCKET_ACCEPT = "Sec-WebSocket-Accept";
-
-	private static final String SEC_WEBSOCKET_EXTENSIONS = "Sec-WebSocket-Extensions";
-
-	private static final String SEC_WEBSOCKET_KEY = "Sec-WebSocket-Key";
-
-	private static final String SEC_WEBSOCKET_PROTOCOL = "Sec-WebSocket-Protocol";
-
-	private static final String SEC_WEBSOCKET_VERSION = "Sec-WebSocket-Version";
-
 	private static final String PRAGMA = "Pragma";
 
-	private static final String UPGARDE = "Upgrade";
+	private static final String UPGRADE = "Upgrade";
 
 
 	private static final String[] DATE_FORMATS = new String[] {
@@ -169,8 +158,8 @@ public class HttpHeaders implements MultiValueMap<String, String>, Serializable 
 		List<MediaType> result = (value != null) ? MediaType.parseMediaTypes(value) : Collections.<MediaType>emptyList();
 
 		// Some containers parse 'Accept' into multiple values
-		if ((result.size() == 1) && (headers.get(ACCEPT).size() > 1)) {
-			value = StringUtils.collectionToCommaDelimitedString(headers.get(ACCEPT));
+		if ((result.size() == 1) && (get(ACCEPT).size() > 1)) {
+			value = StringUtils.collectionToCommaDelimitedString(get(ACCEPT));
 			result = MediaType.parseMediaTypes(value);
 		}
 
@@ -452,7 +441,7 @@ public class HttpHeaders implements MultiValueMap<String, String>, Serializable 
 		set(IF_NONE_MATCH, toCommaDelimitedString(ifNoneMatchList));
 	}
 
-	private String toCommaDelimitedString(List<String> list) {
+	protected String toCommaDelimitedString(List<String> list) {
 		StringBuilder builder = new StringBuilder();
 		for (Iterator<String> iterator = list.iterator(); iterator.hasNext();) {
 			String ifNoneMatch = iterator.next();
@@ -472,7 +461,7 @@ public class HttpHeaders implements MultiValueMap<String, String>, Serializable 
 		return getFirstValueAsList(IF_NONE_MATCH);
 	}
 
-	private List<String> getFirstValueAsList(String header) {
+	protected List<String> getFirstValueAsList(String header) {
 		List<String> result = new ArrayList<String>();
 
 		String value = getFirst(header);
@@ -538,114 +527,6 @@ public class HttpHeaders implements MultiValueMap<String, String>, Serializable 
 	}
 
 	/**
-	 * Sets the (new) value of the {@code Sec-WebSocket-Accept} header.
-	 * @param secWebSocketAccept the value of the header
-	 */
-	public void setSecWebSocketAccept(String secWebSocketAccept) {
-		set(SEC_WEBSOCKET_ACCEPT, secWebSocketAccept);
-	}
-
-	/**
-	 * Returns the value of the {@code Sec-WebSocket-Accept} header.
-	 * @return the value of the header
-	 */
-	public String getSecWebSocketAccept() {
-		return getFirst(SEC_WEBSOCKET_ACCEPT);
-	}
-
-	/**
-	 * Returns the value of the {@code Sec-WebSocket-Extensions} header.
-	 * @return the value of the header
-	 */
-	public List<String> getSecWebSocketExtensions() {
-		List<String> values = get(SEC_WEBSOCKET_EXTENSIONS);
-		if (CollectionUtils.isEmpty(values)) {
-			return Collections.emptyList();
-		}
-		else if (values.size() == 1) {
-			return getFirstValueAsList(SEC_WEBSOCKET_EXTENSIONS);
-		}
-		else {
-			return values;
-		}
-	}
-
-	/**
-	 * Sets the (new) value of the {@code Sec-WebSocket-Extensions} header.
-	 * @param secWebSocketExtensions the value of the header
-	 */
-	public void setSecWebSocketExtensions(List<String> secWebSocketExtensions) {
-		set(SEC_WEBSOCKET_EXTENSIONS, toCommaDelimitedString(secWebSocketExtensions));
-	}
-
-	/**
-	 * Sets the (new) value of the {@code Sec-WebSocket-Key} header.
-	 * @param secWebSocketKey the value of the header
-	 */
-	public void setSecWebSocketKey(String secWebSocketKey) {
-		set(SEC_WEBSOCKET_KEY, secWebSocketKey);
-	}
-
-	/**
-	 * Returns the value of the {@code Sec-WebSocket-Key} header.
-	 * @return the value of the header
-	 */
-	public String getSecWebSocketKey() {
-		return getFirst(SEC_WEBSOCKET_KEY);
-	}
-
-	/**
-	 * Sets the (new) value of the {@code Sec-WebSocket-Protocol} header.
-	 * @param secWebSocketProtocol the value of the header
-	 */
-	public void setSecWebSocketProtocol(String secWebSocketProtocol) {
-		if (secWebSocketProtocol != null) {
-			set(SEC_WEBSOCKET_PROTOCOL, secWebSocketProtocol);
-		}
-	}
-
-	/**
-	 * Sets the (new) value of the {@code Sec-WebSocket-Protocol} header.
-	 * @param secWebSocketProtocols the value of the header
-	 */
-	public void setSecWebSocketProtocol(List<String> secWebSocketProtocols) {
-		set(SEC_WEBSOCKET_PROTOCOL, toCommaDelimitedString(secWebSocketProtocols));
-	}
-
-	/**
-	 * Returns the value of the {@code Sec-WebSocket-Key} header.
-	 * @return the value of the header
-	 */
-	public List<String> getSecWebSocketProtocol() {
-		List<String> values = get(SEC_WEBSOCKET_PROTOCOL);
-		if (CollectionUtils.isEmpty(values)) {
-			return Collections.emptyList();
-		}
-		else if (values.size() == 1) {
-			return getFirstValueAsList(SEC_WEBSOCKET_PROTOCOL);
-		}
-		else {
-			return values;
-		}
-	}
-
-	/**
-	 * Sets the (new) value of the {@code Sec-WebSocket-Version} header.
-	 * @param secWebSocketKey the value of the header
-	 */
-	public void setSecWebSocketVersion(String secWebSocketVersion) {
-		set(SEC_WEBSOCKET_VERSION, secWebSocketVersion);
-	}
-
-	/**
-	 * Returns the value of the {@code Sec-WebSocket-Version} header.
-	 * @return the value of the header
-	 */
-	public String getSecWebSocketVersion() {
-		return getFirst(SEC_WEBSOCKET_VERSION);
-	}
-
-	/**
 	 * Sets the (new) value of the {@code Pragma} header.
 	 * @param pragma the value of the header
 	 */
@@ -666,7 +547,7 @@ public class HttpHeaders implements MultiValueMap<String, String>, Serializable 
 	 * @param upgrade the value of the header
 	 */
 	public void setUpgrade(String upgrade) {
-		set(UPGARDE, upgrade);
+		set(UPGRADE, upgrade);
 	}
 
 	/**
@@ -674,7 +555,7 @@ public class HttpHeaders implements MultiValueMap<String, String>, Serializable 
 	 * @return the value of the header
 	 */
 	public String getUpgrade() {
-		return getFirst(UPGARDE);
+		return getFirst(UPGRADE);
 	}
 
 	// Date methods

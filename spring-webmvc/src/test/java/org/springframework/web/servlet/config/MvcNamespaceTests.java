@@ -19,10 +19,7 @@ package org.springframework.web.servlet.config;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.List;
-import java.util.Locale;
+import java.util.*;
 
 import javax.servlet.RequestDispatcher;
 import javax.validation.constraints.NotNull;
@@ -47,6 +44,7 @@ import org.springframework.mock.web.test.MockRequestDispatcher;
 import org.springframework.mock.web.test.MockServletContext;
 import org.springframework.scheduling.concurrent.ConcurrentTaskExecutor;
 import org.springframework.stereotype.Controller;
+import org.springframework.util.PathMatcher;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.Errors;
 import org.springframework.validation.Validator;
@@ -63,19 +61,18 @@ import org.springframework.web.context.request.async.DeferredResultProcessingInt
 import org.springframework.web.context.request.async.DeferredResultProcessingInterceptorAdapter;
 import org.springframework.web.context.support.GenericWebApplicationContext;
 import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.method.support.CompositeUriComponentsContributor;
 import org.springframework.web.method.support.InvocableHandlerMethod;
 import org.springframework.web.servlet.HandlerExecutionChain;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.ModelAndView;
-import org.springframework.web.servlet.handler.BeanNameUrlHandlerMapping;
-import org.springframework.web.servlet.handler.ConversionServiceExposingInterceptor;
-import org.springframework.web.servlet.handler.SimpleUrlHandlerMapping;
-import org.springframework.web.servlet.handler.WebRequestHandlerInterceptorAdapter;
+import org.springframework.web.servlet.handler.*;
 import org.springframework.web.servlet.i18n.LocaleChangeInterceptor;
 import org.springframework.web.servlet.mvc.HttpRequestHandlerAdapter;
 import org.springframework.web.servlet.mvc.SimpleControllerHandlerAdapter;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
+import org.springframework.web.servlet.mvc.method.annotation.MvcUriComponentsBuilder;
 import org.springframework.web.servlet.resource.DefaultServletHttpRequestHandler;
 import org.springframework.web.servlet.resource.ResourceHttpRequestHandler;
 import org.springframework.web.servlet.theme.ThemeChangeInterceptor;
@@ -108,7 +105,7 @@ public class MvcNamespaceTests {
 
 	@Test
 	public void testDefaultConfig() throws Exception {
-		loadBeanDefinitions("mvc-config.xml", 12);
+		loadBeanDefinitions("mvc-config.xml", 13);
 
 		RequestMappingHandlerMapping mapping = appContext.getBean(RequestMappingHandlerMapping.class);
 		assertNotNull(mapping);
@@ -147,11 +144,17 @@ public class MvcNamespaceTests {
 
 		adapter.handle(request, response, handlerMethod);
 		assertTrue(handler.recordedValidationError);
+
+		CompositeUriComponentsContributor uriComponentsContributor = this.appContext.getBean(
+				MvcUriComponentsBuilder.MVC_URI_COMPONENTS_CONTRIBUTOR_BEAN_NAME,
+				CompositeUriComponentsContributor.class);
+
+		assertNotNull(uriComponentsContributor);
 	}
 
 	@Test(expected=TypeMismatchException.class)
 	public void testCustomConversionService() throws Exception {
-		loadBeanDefinitions("mvc-config-custom-conversion-service.xml", 12);
+		loadBeanDefinitions("mvc-config-custom-conversion-service.xml", 13);
 
 		RequestMappingHandlerMapping mapping = appContext.getBean(RequestMappingHandlerMapping.class);
 		assertNotNull(mapping);
@@ -177,7 +180,19 @@ public class MvcNamespaceTests {
 
 	@Test
 	public void testCustomValidator() throws Exception {
-		loadBeanDefinitions("mvc-config-custom-validator.xml", 12);
+		doTestCustomValidator("mvc-config-custom-validator.xml");
+	}
+
+	@Test
+	public void testCustomValidator32() throws Exception {
+		doTestCustomValidator("mvc-config-custom-validator-32.xml");
+	}
+
+	/**
+	 * @throws Exception
+	 */
+	private void doTestCustomValidator(String xml) throws Exception {
+		loadBeanDefinitions(xml, 13);
 
 		RequestMappingHandlerMapping mapping = appContext.getBean(RequestMappingHandlerMapping.class);
 		assertNotNull(mapping);
@@ -199,7 +214,7 @@ public class MvcNamespaceTests {
 
 	@Test
 	public void testInterceptors() throws Exception {
-		loadBeanDefinitions("mvc-config-interceptors.xml", 17);
+		loadBeanDefinitions("mvc-config-interceptors.xml", 20);
 
 		RequestMappingHandlerMapping mapping = appContext.getBean(RequestMappingHandlerMapping.class);
 		assertNotNull(mapping);
@@ -211,11 +226,12 @@ public class MvcNamespaceTests {
 		request.addParameter("theme", "green");
 
 		HandlerExecutionChain chain = mapping.getHandler(request);
-		assertEquals(4, chain.getInterceptors().length);
+		assertEquals(5, chain.getInterceptors().length);
 		assertTrue(chain.getInterceptors()[0] instanceof ConversionServiceExposingInterceptor);
 		assertTrue(chain.getInterceptors()[1] instanceof LocaleChangeInterceptor);
 		assertTrue(chain.getInterceptors()[2] instanceof WebRequestHandlerInterceptorAdapter);
 		assertTrue(chain.getInterceptors()[3] instanceof ThemeChangeInterceptor);
+		assertTrue(chain.getInterceptors()[4] instanceof UserRoleAuthorizationInterceptor);
 
 		request.setRequestURI("/admin/users");
 		chain = mapping.getHandler(request);
@@ -328,7 +344,7 @@ public class MvcNamespaceTests {
 
 	@Test
 	public void testBeanDecoration() throws Exception {
-		loadBeanDefinitions("mvc-config-bean-decoration.xml", 14);
+		loadBeanDefinitions("mvc-config-bean-decoration.xml", 15);
 
 		RequestMappingHandlerMapping mapping = appContext.getBean(RequestMappingHandlerMapping.class);
 		assertNotNull(mapping);
@@ -349,7 +365,7 @@ public class MvcNamespaceTests {
 
 	@Test
 	public void testViewControllers() throws Exception {
-		loadBeanDefinitions("mvc-config-view-controllers.xml", 15);
+		loadBeanDefinitions("mvc-config-view-controllers.xml", 16);
 
 		RequestMappingHandlerMapping mapping = appContext.getBean(RequestMappingHandlerMapping.class);
 		assertNotNull(mapping);
@@ -409,7 +425,7 @@ public class MvcNamespaceTests {
 	/** WebSphere gives trailing servlet path slashes by default!! */
 	@Test
 	public void testViewControllersOnWebSphere() throws Exception {
-		loadBeanDefinitions("mvc-config-view-controllers.xml", 15);
+		loadBeanDefinitions("mvc-config-view-controllers.xml", 16);
 
 		SimpleUrlHandlerMapping mapping2 = appContext.getBean(SimpleUrlHandlerMapping.class);
 		SimpleControllerHandlerAdapter adapter = appContext.getBean(SimpleControllerHandlerAdapter.class);
@@ -462,7 +478,7 @@ public class MvcNamespaceTests {
 
 	@Test
 	public void testContentNegotiationManager() throws Exception {
-		loadBeanDefinitions("mvc-config-content-negotiation-manager.xml", 12);
+		loadBeanDefinitions("mvc-config-content-negotiation-manager.xml", 13);
 
 		RequestMappingHandlerMapping mapping = appContext.getBean(RequestMappingHandlerMapping.class);
 		ContentNegotiationManager manager = mapping.getContentNegotiationManager();
@@ -474,7 +490,7 @@ public class MvcNamespaceTests {
 
 	@Test
 	public void testAsyncSupportOptions() throws Exception {
-		loadBeanDefinitions("mvc-config-async-support.xml", 13);
+		loadBeanDefinitions("mvc-config-async-support.xml", 14);
 
 		RequestMappingHandlerAdapter adapter = appContext.getBean(RequestMappingHandlerAdapter.class);
 		assertNotNull(adapter);
@@ -563,5 +579,43 @@ public class MvcNamespaceTests {
 	public static class TestCallableProcessingInterceptor extends CallableProcessingInterceptorAdapter { }
 
 	public static class TestDeferredResultProcessingInterceptor extends DeferredResultProcessingInterceptorAdapter { }
+
+	public static class TestPathMatcher implements PathMatcher {
+
+		@Override
+		public boolean isPattern(String path) {
+			return false;
+		}
+
+		@Override
+		public boolean match(String pattern, String path) {
+			return path.matches(pattern);
+		}
+
+		@Override
+		public boolean matchStart(String pattern, String path) {
+			return false;
+		}
+
+		@Override
+		public String extractPathWithinPattern(String pattern, String path) {
+			return null;
+		}
+
+		@Override
+		public Map<String, String> extractUriTemplateVariables(String pattern, String path) {
+			return null;
+		}
+
+		@Override
+		public Comparator<String> getPatternComparator(String path) {
+			return null;
+		}
+
+		@Override
+		public String combine(String pattern1, String pattern2) {
+			return null;
+		}
+	}
 
 }

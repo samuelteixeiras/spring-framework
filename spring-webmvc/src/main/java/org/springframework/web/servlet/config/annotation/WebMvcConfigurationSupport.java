@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 import javax.servlet.ServletContext;
 import javax.servlet.http.HttpServletRequest;
 import javax.xml.transform.Source;
@@ -45,7 +44,6 @@ import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.http.converter.feed.AtomFeedHttpMessageConverter;
 import org.springframework.http.converter.feed.RssChannelHttpMessageConverter;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
-import org.springframework.http.converter.json.MappingJacksonHttpMessageConverter;
 import org.springframework.http.converter.support.AllEncompassingFormHttpMessageConverter;
 import org.springframework.http.converter.xml.Jaxb2RootElementHttpMessageConverter;
 import org.springframework.http.converter.xml.SourceHttpMessageConverter;
@@ -53,7 +51,6 @@ import org.springframework.util.ClassUtils;
 import org.springframework.validation.Errors;
 import org.springframework.validation.MessageCodesResolver;
 import org.springframework.validation.Validator;
-import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 import org.springframework.web.HttpRequestHandler;
 import org.springframework.web.accept.ContentNegotiationManager;
 import org.springframework.web.bind.WebDataBinder;
@@ -61,6 +58,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.support.ConfigurableWebBindingInitializer;
 import org.springframework.web.context.ServletContextAware;
+import org.springframework.web.method.support.CompositeUriComponentsContributor;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.HandlerMethodReturnValueHandler;
 import org.springframework.web.servlet.HandlerAdapter;
@@ -129,8 +127,8 @@ import org.springframework.web.servlet.mvc.support.DefaultHandlerExceptionResolv
  * <ul>
  * 	<li>A {@link ContentNegotiationManager}
  * 	<li>A {@link DefaultFormattingConversionService}
- * 	<li>A {@link LocalValidatorFactoryBean} if a JSR-303 implementation is
- * 	available on the classpath
+ * 	<li>A {@link org.springframework.validation.beanvalidation.OptionalValidatorFactoryBean}
+ * 	if a JSR-303 implementation is available on the classpath
  * 	<li>A range of {@link HttpMessageConverter}s depending on the 3rd party
  * 	libraries available on the classpath.
  * </ul>
@@ -144,6 +142,9 @@ import org.springframework.web.servlet.mvc.support.DefaultHandlerExceptionResolv
  */
 public class WebMvcConfigurationSupport implements ApplicationContextAware, ServletContextAware {
 
+	private static boolean romePresent =
+			ClassUtils.isPresent("com.sun.syndication.feed.WireFeed", WebMvcConfigurationSupport.class.getClassLoader());
+
 	private static final boolean jaxb2Present =
 			ClassUtils.isPresent("javax.xml.bind.Binder", WebMvcConfigurationSupport.class.getClassLoader());
 
@@ -151,12 +152,6 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 			ClassUtils.isPresent("com.fasterxml.jackson.databind.ObjectMapper", WebMvcConfigurationSupport.class.getClassLoader()) &&
 					ClassUtils.isPresent("com.fasterxml.jackson.core.JsonGenerator", WebMvcConfigurationSupport.class.getClassLoader());
 
-	private static final boolean jacksonPresent =
-			ClassUtils.isPresent("org.codehaus.jackson.map.ObjectMapper", WebMvcConfigurationSupport.class.getClassLoader()) &&
-					ClassUtils.isPresent("org.codehaus.jackson.JsonGenerator", WebMvcConfigurationSupport.class.getClassLoader());
-
-	private static boolean romePresent =
-			ClassUtils.isPresent("com.sun.syndication.feed.WireFeed", WebMvcConfigurationSupport.class.getClassLoader());
 
 	private ServletContext servletContext;
 
@@ -192,10 +187,27 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 	 */
 	@Bean
 	public RequestMappingHandlerMapping requestMappingHandlerMapping() {
+		PathMatchConfigurer configurer = new PathMatchConfigurer();
+		configurePathMatch(configurer);
 		RequestMappingHandlerMapping handlerMapping = new RequestMappingHandlerMapping();
 		handlerMapping.setOrder(0);
 		handlerMapping.setInterceptors(getInterceptors());
 		handlerMapping.setContentNegotiationManager(mvcContentNegotiationManager());
+		if(configurer.isUseSuffixPatternMatch() != null) {
+			handlerMapping.setUseSuffixPatternMatch(configurer.isUseSuffixPatternMatch());
+		}
+		if(configurer.isUseRegisteredSuffixPatternMatch() != null) {
+			handlerMapping.setUseRegisteredSuffixPatternMatch(configurer.isUseRegisteredSuffixPatternMatch());
+		}
+		if(configurer.isUseTrailingSlashMatch() != null) {
+			handlerMapping.setUseTrailingSlashMatch(configurer.isUseTrailingSlashMatch());
+		}
+		if(configurer.getPathMatcher() != null) {
+			handlerMapping.setPathMatcher(configurer.getPathMatcher());
+		}
+		if(configurer.getUrlPathHelper() != null) {
+			handlerMapping.setUrlPathHelper(configurer.getUrlPathHelper());
+		}
 		return handlerMapping;
 	}
 
@@ -209,9 +221,9 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 			InterceptorRegistry registry = new InterceptorRegistry();
 			addInterceptors(registry);
 			registry.addInterceptor(new ConversionServiceExposingInterceptor(mvcConversionService()));
-			interceptors = registry.getInterceptors();
+			this.interceptors = registry.getInterceptors();
 		}
-		return interceptors.toArray();
+		return this.interceptors.toArray();
 	}
 
 	/**
@@ -248,11 +260,11 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 			map.put("atom", MediaType.APPLICATION_ATOM_XML);
 			map.put("rss", MediaType.valueOf("application/rss+xml"));
 		}
-		if (jackson2Present || jacksonPresent) {
-			map.put("json", MediaType.APPLICATION_JSON);
-		}
 		if (jaxb2Present) {
 			map.put("xml", MediaType.APPLICATION_XML);
+		}
+		if (jackson2Present) {
+			map.put("json", MediaType.APPLICATION_JSON);
 		}
 		return map;
 	}
@@ -410,7 +422,7 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 	 * {@code @ModelAttribute} and {@code @RequestBody} method arguments.
 	 * Delegates to {@link #getValidator()} first and if that returns {@code null}
 	 * checks the classpath for the presence of a JSR-303 implementations
-	 * before creating a {@code LocalValidatorFactoryBean}.If a JSR-303
+	 * before creating a {@code OptionalValidatorFactoryBean}.If a JSR-303
 	 * implementation is not available, a no-op {@link Validator} is returned.
 	 */
 	@Bean
@@ -420,7 +432,7 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 			if (ClassUtils.isPresent("javax.validation.Validator", getClass().getClassLoader())) {
 				Class<?> clazz;
 				try {
-					String className = "org.springframework.validation.beanvalidation.LocalValidatorFactoryBean";
+					String className = "org.springframework.validation.beanvalidation.OptionalValidatorFactoryBean";
 					clazz = ClassUtils.forName(className, WebMvcConfigurationSupport.class.getClassLoader());
 				}
 				catch (ClassNotFoundException e) {
@@ -535,6 +547,7 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 		messageConverters.add(new ResourceHttpMessageConverter());
 		messageConverters.add(new SourceHttpMessageConverter<Source>());
 		messageConverters.add(new AllEncompassingFormHttpMessageConverter());
+
 		if (romePresent) {
 			messageConverters.add(new AtomFeedHttpMessageConverter());
 			messageConverters.add(new RssChannelHttpMessageConverter());
@@ -544,9 +557,6 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 		}
 		if (jackson2Present) {
 			messageConverters.add(new MappingJackson2HttpMessageConverter());
-		}
-		else if (jacksonPresent) {
-			messageConverters.add(new MappingJacksonHttpMessageConverter());
 		}
 	}
 
@@ -561,6 +571,24 @@ public class WebMvcConfigurationSupport implements ApplicationContextAware, Serv
 	 * @see AsyncSupportConfigurer
 	 */
 	public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
+	}
+
+	/**
+	 * Override this method to configure path matching options.
+	 * @see PathMatchConfigurer
+	 * @since 4.0.3
+	 */
+	public void configurePathMatch(PathMatchConfigurer configurer) {
+	}
+
+	/**
+	 * Return an instance of {@link CompositeUriComponentsContributor} for use with
+	 * {@link org.springframework.web.servlet.mvc.method.annotation.MvcUriComponentsBuilder}.
+	 */
+	@Bean
+	public CompositeUriComponentsContributor mvcUriComponentsContributor() {
+		return new CompositeUriComponentsContributor(
+				requestMappingHandlerAdapter().getArgumentResolvers(), mvcConversionService());
 	}
 
 	/**

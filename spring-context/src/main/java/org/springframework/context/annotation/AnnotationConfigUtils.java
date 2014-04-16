@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,9 @@
 
 package org.springframework.context.annotation;
 
+import java.util.Collections;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 
 import org.springframework.beans.factory.annotation.AnnotatedBeanDefinition;
@@ -32,6 +34,7 @@ import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.annotation.AnnotationAttributes;
 import org.springframework.core.annotation.AnnotationAwareOrderComparator;
 import org.springframework.core.type.AnnotatedTypeMetadata;
+import org.springframework.core.type.AnnotationMetadata;
 import org.springframework.util.ClassUtils;
 
 /**
@@ -44,6 +47,8 @@ import org.springframework.util.ClassUtils;
  * @author Mark Fisher
  * @author Juergen Hoeller
  * @author Chris Beams
+ * @author Phillip Webb
+ * @author Stephane Nicoll
  * @since 2.5
  * @see ContextAnnotationAutowireCandidateResolver
  * @see CommonAnnotationBeanPostProcessor
@@ -142,6 +147,48 @@ public class AnnotationConfigUtils {
 	 */
 	public static final String CACHE_ASPECT_CONFIGURATION_CLASS_NAME =
 			"org.springframework.cache.aspectj.AspectJCachingConfiguration";
+
+	/**
+	 * The bean name of the internally managed JSR-107 cache advisor.
+	 */
+	public static final String JCACHE_ADVISOR_BEAN_NAME =
+			"org.springframework.cache.config.internalJCacheAdvisor";
+
+	/**
+	 * The class name of the JSR-107 cache operation source.
+	 */
+	public static final String JCACHE_OPERATION_SOURCE_CLASS
+			= "org.springframework.cache.jcache.interceptor.DefaultJCacheOperationSource";
+
+	/**
+	 * The class name of the JSR-107 cache interceptor.
+	 */
+	public static final String JCACHE_INTERCEPTOR_CLASS =
+			"org.springframework.cache.jcache.interceptor.JCacheInterceptor";
+
+	/**
+	 * The class name of the JSR-107 cache advisor factory.
+	 */
+	public static final String JCACHE_ADVISOR_FACTORY_CLASS =
+			"org.springframework.cache.jcache.interceptor.BeanFactoryJCacheOperationSourceAdvisor";
+
+	/**
+	 * The bean name of the internally managed JSR-107 cache aspect.
+	 */
+	public static final String JCACHE_ASPECT_BEAN_NAME =
+			"org.springframework.cache.config.internalJCacheAspect";
+
+	/**
+	 * The class name of the AspectJ JSR-107 cache aspect.
+	 */
+	public static final String JCACHE_ASPECT_CLASS_NAME =
+			"org.springframework.cache.aspectj.JCacheCacheAspect";
+
+	/**
+	 * The name of the AspectJ JSR-107 cache aspect @{@code Configuration} class.
+	 */
+	public static final String JCACHE_ASPECT_CONFIGURATION_CLASS_NAME =
+			"org.springframework.cache.aspectj.AspectJJCacheConfiguration";
 
 	/**
 	 * The bean name of the internally managed JPA annotation processor.
@@ -256,7 +303,7 @@ public class AnnotationConfigUtils {
 		}
 	}
 
-	static void processCommonDefinitionAnnotations(AnnotatedBeanDefinition abd) {
+	public static void processCommonDefinitionAnnotations(AnnotatedBeanDefinition abd) {
 		processCommonDefinitionAnnotations(abd, abd.getMetadata());
 	}
 
@@ -297,12 +344,40 @@ public class AnnotationConfigUtils {
 		return ScopedProxyCreator.createScopedProxy(definition, registry, proxyTargetClass);
 	}
 
-	static AnnotationAttributes attributesFor(AnnotatedTypeMetadata metadata, Class<?> annoClass) {
-		return attributesFor(metadata, annoClass.getName());
+	static AnnotationAttributes attributesFor(AnnotatedTypeMetadata metadata, Class<?> annotationClass) {
+		return attributesFor(metadata, annotationClass.getName());
 	}
 
-	static AnnotationAttributes attributesFor(AnnotatedTypeMetadata metadata, String annoClassName) {
-		return AnnotationAttributes.fromMap(metadata.getAnnotationAttributes(annoClassName, false));
+	static AnnotationAttributes attributesFor(AnnotatedTypeMetadata metadata, String annotationClassName) {
+		return AnnotationAttributes.fromMap(metadata.getAnnotationAttributes(annotationClassName, false));
+	}
+
+	static Set<AnnotationAttributes> attributesForRepeatable(AnnotationMetadata metadata,
+			Class<?> containerClass, Class<?> annotationClass) {
+		return attributesForRepeatable(metadata, containerClass.getName(), annotationClass.getName());
+	}
+
+	@SuppressWarnings("unchecked")
+	static Set<AnnotationAttributes> attributesForRepeatable(AnnotationMetadata metadata,
+			String containerClassName, String annotationClassName) {
+		Set<AnnotationAttributes> result = new LinkedHashSet<AnnotationAttributes>();
+
+		addAttributesIfNotNull(result, metadata.getAnnotationAttributes(annotationClassName, false));
+
+		Map<String, Object> container = metadata.getAnnotationAttributes(containerClassName, false);
+		if (container != null && container.containsKey("value")) {
+			for (Map<String, Object> containedAttributes : (Map<String, Object>[]) container.get("value")) {
+				addAttributesIfNotNull(result, containedAttributes);
+			}
+		}
+		return Collections.unmodifiableSet(result);
+	}
+
+	private static void addAttributesIfNotNull(Set<AnnotationAttributes> result,
+			Map<String, Object> attributes) {
+		if (attributes != null) {
+			result.add(AnnotationAttributes.fromMap(attributes));
+		}
 	}
 
 }

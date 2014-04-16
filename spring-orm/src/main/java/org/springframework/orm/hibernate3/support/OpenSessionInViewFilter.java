@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,8 +17,6 @@
 package org.springframework.orm.hibernate3.support;
 
 import java.io.IOException;
-import java.util.concurrent.Callable;
-
 import javax.servlet.FilterChain;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
@@ -27,14 +25,13 @@ import javax.servlet.http.HttpServletResponse;
 import org.hibernate.FlushMode;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.orm.hibernate3.SessionFactoryUtils;
 import org.springframework.orm.hibernate3.SessionHolder;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.Assert;
 import org.springframework.web.context.WebApplicationContext;
-import org.springframework.web.context.request.NativeWebRequest;
-import org.springframework.web.context.request.async.CallableProcessingInterceptorAdapter;
 import org.springframework.web.context.request.async.WebAsyncManager;
 import org.springframework.web.context.request.async.WebAsyncUtils;
 import org.springframework.web.context.support.WebApplicationContextUtils;
@@ -91,10 +88,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * @see #setFlushMode
  * @see #lookupSessionFactory
  * @see OpenSessionInViewInterceptor
- * @see org.springframework.orm.hibernate3.HibernateInterceptor
+ * @see OpenSessionInterceptor
  * @see org.springframework.orm.hibernate3.HibernateTransactionManager
  * @see org.springframework.orm.hibernate3.SessionFactoryUtils#getSession
  * @see org.springframework.transaction.support.TransactionSynchronizationManager
+ * @see org.hibernate.SessionFactory#getCurrentSession()
  */
 public class OpenSessionInViewFilter extends OncePerRequestFilter {
 
@@ -169,7 +167,7 @@ public class OpenSessionInViewFilter extends OncePerRequestFilter {
 	}
 
 	/**
-	 * The default value is "false" so that the filter may re-bind the opened
+	 * Returns "false" so that the filter may re-bind the opened Hibernate
 	 * {@code Session} to each asynchronously dispatched thread and postpone
 	 * closing it until the very last asynchronous dispatch.
 	 */
@@ -212,8 +210,9 @@ public class OpenSessionInViewFilter extends OncePerRequestFilter {
 					SessionHolder sessionHolder = new SessionHolder(session);
 					TransactionSynchronizationManager.bindResource(sessionFactory, sessionHolder);
 
-					asyncManager.registerCallableInterceptor(key,
-							new SessionBindingCallableInterceptor(sessionFactory, sessionHolder));
+					AsyncRequestInterceptor interceptor = new AsyncRequestInterceptor(sessionFactory, sessionHolder);
+					asyncManager.registerCallableInterceptor(key, interceptor);
+					asyncManager.registerDeferredResultInterceptor(key, interceptor);
 				}
 			}
 		}
@@ -319,38 +318,8 @@ public class OpenSessionInViewFilter extends OncePerRequestFilter {
 		if (asyncManager.getCallableInterceptor(key) == null) {
 			return false;
 		}
-		((SessionBindingCallableInterceptor) asyncManager.getCallableInterceptor(key)).initializeThread();
+		((AsyncRequestInterceptor) asyncManager.getCallableInterceptor(key)).bindSession();
 		return true;
-	}
-
-
-	/**
-	 * Bind and unbind the Hibernate {@code Session} to the current thread.
-	 */
-	private static class SessionBindingCallableInterceptor extends CallableProcessingInterceptorAdapter {
-
-		private final SessionFactory sessionFactory;
-
-		private final SessionHolder sessionHolder;
-
-		public SessionBindingCallableInterceptor(SessionFactory sessionFactory, SessionHolder sessionHolder) {
-			this.sessionFactory = sessionFactory;
-			this.sessionHolder = sessionHolder;
-		}
-
-		@Override
-		public <T> void preProcess(NativeWebRequest request, Callable<T> task) {
-			initializeThread();
-		}
-
-		@Override
-		public <T> void postProcess(NativeWebRequest request, Callable<T> task, Object concurrentResult) {
-			TransactionSynchronizationManager.unbindResource(this.sessionFactory);
-		}
-
-		private void initializeThread() {
-			TransactionSynchronizationManager.bindResource(this.sessionFactory, this.sessionHolder);
-		}
 	}
 
 }

@@ -16,17 +16,24 @@
 
 package org.springframework.expression.spel.ast;
 
+import java.math.BigDecimal;
+
+import org.springframework.expression.spel.ExpressionState;
+import org.springframework.util.NumberUtils;
+import org.springframework.util.ObjectUtils;
+
 /**
  * Common supertype for operators that operate on either one or two operands. In the case
  * of multiply or divide there would be two operands, but for unary plus or minus, there
  * is only one.
  *
  * @author Andy Clement
+ * @author Giovanni Dall'Oglio Risso
  * @since 3.0
  */
 public abstract class Operator extends SpelNodeImpl {
 
-	String operatorName;
+	private final String operatorName;
 
 
 	public Operator(String payload,int pos,SpelNodeImpl... operands) {
@@ -61,6 +68,39 @@ public abstract class Operator extends SpelNodeImpl {
 		}
 		sb.append(")");
 		return sb.toString();
+	}
+
+	protected boolean equalityCheck(ExpressionState state, Object left, Object right) {
+		if (left instanceof Number && right instanceof Number) {
+			Number leftNumber = (Number) left;
+			Number rightNumber = (Number) right;
+
+			if (leftNumber instanceof BigDecimal || rightNumber instanceof BigDecimal) {
+				BigDecimal leftBigDecimal = NumberUtils.convertNumberToTargetClass(leftNumber, BigDecimal.class);
+				BigDecimal rightBigDecimal = NumberUtils.convertNumberToTargetClass(rightNumber, BigDecimal.class);
+				return (leftBigDecimal == null ? rightBigDecimal == null : leftBigDecimal.compareTo(rightBigDecimal) == 0);
+			}
+
+			if (leftNumber instanceof Double || rightNumber instanceof Double) {
+				return (leftNumber.doubleValue() == rightNumber.doubleValue());
+			}
+
+			if (leftNumber instanceof Float || rightNumber instanceof Float) {
+				return (leftNumber.floatValue() == rightNumber.floatValue());
+			}
+
+			if (leftNumber instanceof Long || rightNumber instanceof Long) {
+				return (leftNumber.longValue() == rightNumber.longValue());
+			}
+
+			return (leftNumber.intValue() == rightNumber.intValue());
+		}
+
+		if (left != null && (left instanceof Comparable)) {
+			return (state.getTypeComparator().compare(left, right) == 0);
+		}
+
+		return ObjectUtils.nullSafeEquals(left, right);
 	}
 
 }

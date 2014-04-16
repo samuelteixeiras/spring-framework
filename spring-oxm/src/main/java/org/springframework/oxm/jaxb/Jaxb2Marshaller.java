@@ -36,6 +36,7 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
+
 import javax.activation.DataHandler;
 import javax.activation.DataSource;
 import javax.xml.XMLConstants;
@@ -63,6 +64,7 @@ import javax.xml.transform.Result;
 import javax.xml.transform.Source;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.sax.SAXSource;
+import javax.xml.transform.stax.StAXSource;
 import javax.xml.transform.stream.StreamSource;
 import javax.xml.validation.Schema;
 import javax.xml.validation.SchemaFactory;
@@ -74,13 +76,11 @@ import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.XMLReader;
 import org.xml.sax.helpers.XMLReaderFactory;
-
 import org.springframework.beans.factory.BeanClassLoaderAware;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.core.JdkVersion;
 import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.core.io.Resource;
-import org.springframework.core.io.ResourceLoader;
 import org.springframework.oxm.GenericMarshaller;
 import org.springframework.oxm.GenericUnmarshaller;
 import org.springframework.oxm.MarshallingFailureException;
@@ -100,7 +100,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.util.xml.StaxUtils;
 
 /**
- * Implementation of the {@code Marshaller} interface for JAXB 2.0.
+ * Implementation of the {@code GenericMarshaller} interface for JAXB 2.1/2.2,
+ * as included in JDK 6 update 4+ and Java 7/8.
  *
  * <p>The typical usage will be to set either the "contextPath" or the "classesToBeBound"
  * property on this bean, possibly customize the marshaller and unmarshaller by setting
@@ -166,8 +167,6 @@ public class Jaxb2Marshaller implements MimeMarshaller, MimeUnmarshaller, Generi
 	private Class<?> mappedClass;
 
 	private ClassLoader beanClassLoader;
-
-	private ResourceLoader resourceLoader;
 
 	private final Object jaxbContextMonitor = new Object();
 
@@ -399,6 +398,13 @@ public class Jaxb2Marshaller implements MimeMarshaller, MimeUnmarshaller, Generi
 	 */
 	public void setProcessExternalEntities(boolean processExternalEntities) {
 		this.processExternalEntities = processExternalEntities;
+	}
+
+	/**
+	 * @return the configured value for whether XML external entities are allowed.
+	 */
+	public boolean isProcessExternalEntities() {
+		return this.processExternalEntities;
 	}
 
 	@Override
